@@ -321,3 +321,72 @@ describe('the domain-name boundary', () => {
     expect(assertDomainName('alaya_review')).toBe('alaya_review')
   })
 })
+
+describe('durable writes under concurrency', () => {
+  it('lands every contact received in parallel, in the order memory took them', async () => {
+    const { ctx, facility } = await boot()
+    const table = facility.opened[0]!.table('seeds')
+    const order: string[] = []
+    const put = table.put.bind(table)
+    let started = 0
+    table.put = async (key: string, value: unknown) => {
+      // The first write is the slowest. Without the queue the later ones would
+      // be issued immediately and finish first, so completion order is what
+      // this asserts — call order would pass either way.
+      const delay = started++ === 0 ? 20 : 0
+      await new Promise(resolve => setTimeout(resolve, delay))
+      await put(key, value)
+      order.push(key)
+    }
+
+    const at = Date.now()
+    await Promise.all(['a', 'b', 'c', 'd'].map((name, index) => ctx.citta.receive({
+      gate: 'eye', situation: `read:${name}.ts`, outcome: 'favorable', intensity: 0.4, at: at + index,
+    })))
+
+    expect(order).toEqual(['read:a.ts', 'read:b.ts', 'read:c.ts', 'read:d.ts'])
+    expect(table.records.size).toBe(4)
+    expect(ctx.citta.state().contacts).toBe(4)
+  })
+
+  it('keeps the queue moving after one write fails', async () => {
+    const { ctx, facility } = await boot()
+    const table = facility.opened[0]!.table('seeds')
+    const put = table.put.bind(table)
+    let first = true
+    table.put = (key: string, value: unknown) => {
+      if (first) {
+        first = false
+        return Promise.reject(new Error('medium is full'))
+      }
+      return put(key, value)
+    }
+
+    const at = Date.now()
+    await expect(ctx.citta.receive({
+      gate: 'eye', situation: 'read:a.ts', outcome: 'favorable', intensity: 0.4, at,
+    })).rejects.toThrow('medium is full')
+
+    await ctx.citta.receive({
+      gate: 'eye', situation: 'read:b.ts', outcome: 'favorable', intensity: 0.4, at: at + 1,
+    })
+    expect(table.records.has('read:b.ts')).toBe(true)
+  })
+
+  it('drains queued writes before closing the store', async () => {
+    const { ctx, facility, fiber } = await boot()
+    const table = facility.opened[0]!.table('seeds')
+    const put = table.put.bind(table)
+    table.put = async (key: string, value: unknown) => {
+      await new Promise(resolve => setTimeout(resolve, 20))
+      return put(key, value)
+    }
+
+    void ctx.citta.receive({
+      gate: 'eye', situation: 'read:late.ts', outcome: 'favorable', intensity: 0.4, at: Date.now(),
+    })
+    await fiber.dispose()
+    expect(table.records.has('read:late.ts')).toBe(true)
+    expect(facility.opened[0]!.closed).toBe(true)
+  })
+})

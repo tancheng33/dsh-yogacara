@@ -178,6 +178,13 @@ export class CittaService extends Service {
   private flushTimer?: ReturnType<typeof setTimeout>
   private flushing?: Promise<void>
   private writable = true
+  /**
+   * Tail of the durable write chain. Memory is updated synchronously, so the
+   * chain exists to keep the medium's order equal to memory's order — without
+   * it, two contacts in flight could land their `put` and their prune in either
+   * order, and a restart would read a store that never existed in memory.
+   */
+  private writeTail: Promise<void> = Promise.resolve()
 
   /**
    * @param ctx - Host context carrying the storage-domain form.
@@ -209,9 +216,13 @@ export class CittaService extends Service {
   protected async [Service.init](): Promise<void> {
     const domain = await this.ctx.storageDomain.open(defineAlayaDomain(this.config.domain))
     this.ctx.effect(() => async () => {
+      // Refuse new writes first, then let the queued ones finish: a contact
+      // received while the harness is shutting down is still a contact, and
+      // dropping it would leave the store disagreeing with the last prompt.
       this.writable = false
       if (this.flushTimer !== undefined) clearTimeout(this.flushTimer)
       this.flushTimer = undefined
+      await this.writeTail.catch(() => undefined)
       await this.flushing
       await this.writeGlobal()
       await domain.close()
@@ -326,14 +337,20 @@ export class CittaService extends Service {
    * @returns what the contact produced.
    */
   async receive(contact: Contact): Promise<Reception> {
+    // The whole in-memory move is synchronous, so two contacts in flight can
+    // never interleave halfway through one appraisal. Only the durable half
+    // needs the queue.
     const reception = receive({ citta: this.citta, seeds: this.seeds }, contact, this.tuning)
     this.citta = reception.citta
     this.seeds.set(reception.seed.situation, reception.seed)
     this.lastSituation = reception.seed.situation
 
-    if (this.writable && this.table !== undefined) {
-      await this.table.put(reception.seed.situation, reception.seed)
-      await this.prune(contact.at)
+    const table = this.table
+    if (this.writable && table !== undefined) {
+      await this.enqueue(async () => {
+        await table.put(reception.seed.situation, reception.seed)
+        await this.prune(contact.at)
+      })
     }
     this.scheduleFlush()
     return reception
@@ -395,7 +412,10 @@ export class CittaService extends Service {
    */
   async forget(situation: string): Promise<boolean> {
     const had = this.seeds.delete(situation)
-    if (had && this.writable && this.table !== undefined) await this.table.delete(situation)
+    const table = this.table
+    if (had && this.writable && table !== undefined) {
+      await this.enqueue(async () => void await table.delete(situation))
+    }
     return had
   }
 
@@ -459,6 +479,20 @@ export class CittaService extends Service {
     }
   }
 
+  /**
+   * Queue one durable write behind those already in flight.
+   *
+   * A failed write must not wedge the queue, so the tail continues from the
+   * settled promise either way; the caller still receives the rejection.
+   * @param work - The write to run once the queue reaches it.
+   * @returns resolution after this write lands.
+   */
+  private enqueue(work: () => Promise<void>): Promise<void> {
+    const next = this.writeTail.then(work, work)
+    this.writeTail = next.then(() => undefined, () => undefined)
+    return next
+  }
+
   /** Coalesce durable writes of the momentary state. */
   private scheduleFlush(): void {
     if (!this.writable || this.flushTimer !== undefined) return
@@ -480,7 +514,10 @@ export class CittaService extends Service {
   private async writeGlobal(): Promise<void> {
     const global = this.global
     if (global === undefined) return
-    const write = global.set({ version: 1, citta: this.citta, turnings: this.turnings })
+    // Same queue as the seeds: one order for the whole store, so a reader can
+    // never see a mood that belongs to a contact whose seed has not landed.
+    const write = this.enqueue(() =>
+      global.set({ version: 1, citta: this.citta, turnings: this.turnings }))
     this.flushing = write.then(() => undefined, () => undefined)
     await write
   }
