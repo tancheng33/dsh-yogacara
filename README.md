@@ -58,6 +58,8 @@ The five sense consciousnesses become the five channels an agent actually percei
 
 Manas is not decorative: it *conditions appraisal*. The same correction arriving through 耳识 becomes 惭 (self-respect, and a correction taken) when the grip is loose, and 覆 + 嗔 (concealment and recoil) when it is tight. The object is never met bare — it is met through the self that receives it. That is the claim of the tradition, and here it is 20 lines of code you can test.
 
+Every rule above — which factors each gate stirs, at what weight, where the thresholds sit — is tabulated in [`docs/appraisal.md`](docs/appraisal.md), generated from the code so it cannot drift from it.
+
 **转依.** `self_transform` turns a named affliction into the wisdom that answers it (大圆镜智 / 平等性智 / 妙观察智 / 成所作智) and records a commitment. The reading actually drops and its antidote is stirred — but only for as long as behaviour agrees, because the next contact re-derives everything from what happened. The agent cannot talk itself calm here.
 
 ## What the agent reads

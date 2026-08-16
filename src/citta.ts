@@ -44,19 +44,19 @@ export * from './types.ts'
 const SENSORY_GATES: ReadonlySet<SenseGate> = new Set<SenseGate>(['body', 'tongue'])
 
 /** A favorable run at or above this length starts to intoxicate (憍/我慢). */
-const STREAK_CONCEIT = 3
+export const STREAK_CONCEIT = 3
 
 /** An adverse run at or above this length starts to churn (掉举). */
-const STREAK_CHURN = 2
+export const STREAK_CHURN = 2
 
 /** An adverse run at or above this length starts to dull (昏沉/懈怠). */
-const STREAK_DULL = 4
+export const STREAK_DULL = 4
 
 /** A seed this often re-perfumed adversely is a position, not an accident (我见). */
-const SEED_ENTRENCHED = 3
+export const SEED_ENTRENCHED = 3
 
 /** Above this grip, a correction is met defensively instead of received. */
-const DEFENSIVE_GRIP = 0.5
+export const DEFENSIVE_GRIP = 0.5
 
 // ---------------------------------------------------------------------------
 // Numeric helpers
@@ -189,7 +189,7 @@ type FactorWeights = Partial<Record<CaitasikaId, number>>
  * object, so the same failure read through `ear` (being corrected) and through
  * `body` (a non-zero exit) is not the same event for the mind that receives it.
  */
-const GATE_RULES: Readonly<Record<SenseGate, Readonly<Record<'favorable' | 'adverse', FactorWeights>>>> = {
+export const GATE_RULES: Readonly<Record<SenseGate, Readonly<Record<'favorable' | 'adverse', FactorWeights>>>> = {
   // Looking at things: understanding, or failing to.
   eye: {
     favorable: { samjna: 0.5, prajna: 0.35, manaskara: 0.3 },
