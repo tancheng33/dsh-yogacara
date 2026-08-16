@@ -26,6 +26,13 @@ export interface SelfReportInput {
   readonly maxFactors: number
   /** Self-grasping at or above this reads as a warning rather than a number. */
   readonly manasWarning: number
+  /**
+   * How long a committed turning stays worth showing. Past it the commitment
+   * has either been kept — in which case the readings already reflect it — or
+   * quietly abandoned, and repeating it every turn only teaches the agent to
+   * skim its own state.
+   */
+  readonly turningMaxAgeMs: number
   /** Wall-clock milliseconds, for relative times. */
   readonly now: number
 }
@@ -120,8 +127,10 @@ export function renderStateLines(input: SelfReportInput): string[] {
     }
   }
 
+  // A commitment made an hour ago is a live constraint; one made last week is
+  // a line the agent reads past every turn while paying for it every turn.
   const latest = input.turnings.at(-1)
-  if (latest !== undefined) {
+  if (latest !== undefined && input.now - latest.at <= input.turningMaxAgeMs) {
     const wisdom = wisdomTerm(latest.wisdom)
     lines.push(`近转依 last turning (${relativeTime(input.now - latest.at)}): `
       + `${labelOf(latest.affliction)} → ${wisdom?.chinese ?? latest.wisdom} · ${latest.practice}`)

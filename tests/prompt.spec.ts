@@ -17,6 +17,7 @@ function input(overrides: Partial<SelfReportInput> = {}): SelfReportInput {
     turnings: [],
     maxFactors: 5,
     manasWarning: 0.5,
+    turningMaxAgeMs: 30 * 60_000,
     now: T0,
     ...overrides,
   }
@@ -107,6 +108,18 @@ describe('the self-report', () => {
     }
     const lines = renderStateLines(input({ citta: stirred, turnings: [turning] }))
     expect(lines.some(line => line.includes('近转依') && line.includes('平等性智'))).toBe(true)
+  })
+
+  it('drops a turning old enough to have become furniture', () => {
+    const stale: Transformation = {
+      affliction: 'atma-mana',
+      antidote: 'prajna',
+      wisdom: 'samata',
+      practice: 'grant the correction first',
+      at: T0 - 5 * 60 * 60_000,
+    }
+    const lines = renderStateLines(input({ citta: stirred, turnings: [stale] }))
+    expect(lines.some(line => line.includes('近转依'))).toBe(false)
   })
 
   it('carries the standing guidance whenever any state is reported', () => {

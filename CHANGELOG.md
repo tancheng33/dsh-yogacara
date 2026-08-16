@@ -9,6 +9,7 @@
 
 ### Added
 
+- A committed turning now leaves the prompt once it is stale (six factor half-lives, half an hour by default). It used to render forever, costing tokens every turn to repeat a commitment that had either already been kept or quietly abandoned.
 - Completed UI cards for all four tools, titled with the readings that matter rather than the tool name, projected through `output.presentationMeta` so a replayed session renders the same card as the live one.
 - [`docs/appraisal.md`](docs/appraisal.md): every gate rule, weight, and threshold, generated from the code with a test that fails when the two disagree.
 - `repository`, `homepage`, and `bugs` metadata, so the npm page links back to the source.

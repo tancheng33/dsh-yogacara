@@ -94,6 +94,14 @@ export type { AlayaDomainSpec, AlayaGlobal } from './spec.ts'
 /** Where the self-report sits in the prompt: after tool guidance (100–199). */
 const SECTION_ORDER = 300
 
+/**
+ * How many factor half-lives a committed turning stays on the prompt. Six puts
+ * it at half an hour under the default tuning: long enough to hold the agent to
+ * a commitment across a few turns, short enough that it does not become
+ * furniture.
+ */
+const TURNING_VISIBLE_HALF_LIVES = 6
+
 /** Deployment policy for the self-model. */
 export interface Config {
   /**
@@ -456,6 +464,9 @@ export class CittaService extends Service {
       turnings: this.turnings,
       maxFactors: this.config.promptMaxFactors,
       manasWarning: this.config.manasWarning,
+      // Scaled off the factor half-life so a deployment that tunes how long a
+      // mood lasts also tunes how long a commitment stays on the prompt.
+      turningMaxAgeMs: this.tuning.halfLifeMs * TURNING_VISIBLE_HALF_LIVES,
       now,
     }
   }
