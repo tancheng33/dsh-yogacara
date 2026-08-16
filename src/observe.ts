@@ -43,6 +43,22 @@ const KEY_UNSAFE = /[^A-Za-z0-9._/:-]+/g
 const KEY_MAX = 80
 
 /**
+ * How many meaningful command words a key keeps. Two is enough to separate
+ * `git status` from `git commit` without separating two runs of the same
+ * command over different files.
+ */
+const COMMAND_WORDS = 2
+
+/**
+ * Words that carry no meaning of their own and hand it to what follows, so a
+ * key that stopped at them would merge genuinely different situations —
+ * `npm run build` and `npm run test` are not the same seed.
+ */
+const DELEGATING_WORDS: ReadonlySet<string> = new Set([
+  'run', 'exec', 'x', 'dlx', 'test', 'workspace', '-m',
+])
+
+/**
  * Which gate a tool result reaches.
  * @param toolName - The registered tool name.
  * @param subject - The derived subject, used to tell a test run from a listing.
@@ -86,12 +102,39 @@ export function subjectOf(args: unknown): string {
 export function normalizeSubject(subject: string): string {
   if (subject.length === 0) return ''
   const trimmed = subject.trim()
-  // A path keeps its last two segments; a command keeps its first two words.
+  // A path keeps its last two segments; a command keeps its meaningful head.
   const looksLikePath = /^[./~]|\.[A-Za-z0-9]{1,8}$/.test(trimmed) && !trimmed.includes(' ')
   const head = looksLikePath
     ? trimmed.split('/').filter(Boolean).slice(-2).join('/')
-    : trimmed.split(/\s+/).slice(0, 2).join(' ')
-  return head.replace(KEY_UNSAFE, '-').replace(/^-+|-+$/g, '').slice(0, KEY_MAX)
+    : commandHead(trimmed)
+  return head
+    .replace(KEY_UNSAFE, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, KEY_MAX)
+}
+
+/**
+ * The meaningful head of a command line.
+ *
+ * Flags are dropped, because `pytest -q tests/unit` and `pytest tests/unit
+ * --maxfail=1` are the same situation and should share one seed. Words that
+ * only delegate (`run`, `exec`, `-m`) do not count toward the budget, because
+ * stopping at them would merge situations that are genuinely different.
+ * @param command - The raw command line.
+ * @returns the space-joined head, possibly empty.
+ */
+function commandHead(command: string): string {
+  const kept: string[] = []
+  let meaningful = 0
+  for (const word of command.split(/\s+/)) {
+    // A flag, or the value of one, says how — not what.
+    if (word.startsWith('-') && !DELEGATING_WORDS.has(word)) continue
+    kept.push(word)
+    if (!DELEGATING_WORDS.has(word)) meaningful += 1
+    if (meaningful >= COMMAND_WORDS) break
+  }
+  return kept.join(' ')
 }
 
 /**

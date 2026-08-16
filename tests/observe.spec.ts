@@ -47,9 +47,26 @@ describe('what a call is about', () => {
     expect(subjectOf('a bare string')).toBe('')
   })
 
-  it('keeps the head of a command so repeated runs share a seed', () => {
-    expect(normalizeSubject('pytest -q tests/unit --maxfail=1')).toBe('pytest--q')
-    expect(normalizeSubject('pytest -q tests/other --maxfail=3')).toBe('pytest--q')
+  it('drops flags, so the same work under different flags shares a seed', () => {
+    expect(normalizeSubject('pytest -q tests/unit --maxfail=1')).toBe('pytest-tests/unit')
+    expect(normalizeSubject('pytest tests/unit')).toBe('pytest-tests/unit')
+  })
+
+  it('keeps genuinely different targets apart', () => {
+    expect(normalizeSubject('pytest tests/unit'))
+      .not.toBe(normalizeSubject('pytest tests/e2e'))
+  })
+
+  it('looks past a word that only delegates, so two scripts are two seeds', () => {
+    expect(normalizeSubject('npm run build')).toBe('npm-run-build')
+    expect(normalizeSubject('npm run test')).toBe('npm-run-test')
+    expect(normalizeSubject('pnpm run test:unit')).toBe('pnpm-run-test:unit')
+    expect(normalizeSubject('python -m pytest tests/')).toBe('python-m-pytest')
+  })
+
+  it('still merges the same command over changing arguments beyond the head', () => {
+    expect(normalizeSubject('git commit -m wip')).toBe('git-commit')
+    expect(normalizeSubject('git commit -m "another message"')).toBe('git-commit')
   })
 
   it('keeps the tail of a path so two files stay distinct', () => {
@@ -66,8 +83,8 @@ describe('what a call is about', () => {
 
 describe('the contact a tool result constitutes', () => {
   it('keys the situation by tool and subject', () => {
-    const made = contactFromTool('bash', { command: 'pytest -q' }, false, T0)
-    expect(made.situation).toBe('bash:pytest--q')
+    const made = contactFromTool('bash', { command: 'pytest -q tests/unit' }, false, T0)
+    expect(made.situation).toBe('bash:pytest-tests/unit')
     expect(made.gate).toBe('tongue')
     expect(made.outcome).toBe('favorable')
   })

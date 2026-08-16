@@ -286,7 +286,7 @@ describe('observing tool results', () => {
     // The listener is fire-and-forget; let its microtasks settle.
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(ctx.citta.state().contacts).toBe(1)
-    expect(ctx.citta.seedsFor('bash:pytest--q')[0]?.seed.gate).toBe('tongue')
+    expect(ctx.citta.seedsFor('bash:pytest')[0]?.seed.gate).toBe('tongue')
   })
 
   it('never appraises its own appraisal', async () => {
