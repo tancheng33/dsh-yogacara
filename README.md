@@ -157,6 +157,14 @@ The catalogue is checked structurally: exactly 51 factors, each classical group 
 
 The harness packages are consumed from the `next` npm tag (`0.1.0-rc.6`); the `latest` tag points at an older line that cannot be installed.
 
+## Known limitations
+
+- **Automatic observation reaches three gates, not five.** A tool result tells you what ran and whether it failed; it does not tell you that the config smelled stale (鼻识) or that the user's third correction was sharper than the first (耳识, which only fires for ask/subagent tools). Those two gates depend on `self_appraise` being called. With `observeTools` alone the mind is real but flat.
+- **The manas proxies are proxies.** 我慢 rises on a success streak because streaks are what the harness can see, not because a streak *is* conceit. 我痴 depends on the agent honestly grading its own `nature`. An agent that never calls `self_appraise` has a 我痴 reading driven only by which gates its successes came through.
+- **Every weight in [`docs/appraisal.md`](docs/appraisal.md) is a guess.** They are internally consistent and they behave sensibly in the tests, but none of them is calibrated against anything. If you tune them for your deployment, the numbers are configuration in spirit and constants in fact — a PR that moves them behind config is welcome.
+- **One store per plugin row, shared by every agent in the process.** Two agents in one harness perfume the same seeds. Separate them with two rows and two `domain` names, or accept that the store is the deployment's, not the session's.
+- **The prompt section moves most turns while work is going badly**, which costs KV-cache reuse from order 300 down. `promptSection: false` keeps the state without the cost.
+
 ## Sources
 
 The 51 factors, their groupings, and the antidote pairings follow 《大乘百法明门论》 and 《成唯识论》; the eight consciousnesses, the seed doctrine (种子/熏习/现行), the four afflictions of manas, the three natures (三自性), and the four wisdoms of 转依 follow 《成唯识论》 and 《瑜伽师地论》. The mapping onto harness events is entirely this project's, and no classical source is responsible for it.
