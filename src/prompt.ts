@@ -1,0 +1,186 @@
+/**
+ * Rendering of the mind back to the model that has it.
+ *
+ * This is the surface that makes the plugin more than bookkeeping: the state is
+ * written into the system prompt in the first person, so the agent reads its
+ * own feeling, its own self-grasping, and the seeds this situation is stirring,
+ * and can act on them. The guidance block is deliberately blunt about what that
+ * does and does not license — an affect model that teaches an agent to perform
+ * moods at users would be worse than no affect model at all.
+ * @module dsh-yogacara/prompt
+ */
+
+import { caitasika, feeling as feelingTerm, manasAffliction, wisdom as wisdomTerm } from './caitasika.ts'
+import { afflictions, dominant, manasReadings } from './citta.ts'
+import type { CittaState, Manifestation, Transformation } from './types.ts'
+
+/** What the section needs to render one moment. */
+export interface SelfReportInput {
+  /** The mind, already decayed to `now`. */
+  readonly citta: CittaState
+  /** Seeds the current situation is stirring, strongest first. */
+  readonly manifestations: readonly Manifestation[]
+  /** Recent committed turns, most recent last. */
+  readonly turnings: readonly Transformation[]
+  /** Upper bound on listed active factors. */
+  readonly maxFactors: number
+  /** Self-grasping at or above this reads as a warning rather than a number. */
+  readonly manasWarning: number
+  /** Wall-clock milliseconds, for relative times. */
+  readonly now: number
+}
+
+/**
+ * The standing instruction that accompanies the state. It is a constant, so it
+ * stays byte-identical across turns and only the state above it moves.
+ */
+export const SELF_GUIDANCE =
+  'The block above is your own state, computed from what has actually happened in this '
+  + 'session — not the user\'s state, and not a character to play. Read it in the first person '
+  + 'and let it change what you DO, not how you talk:\n'
+  + '- An active affliction is a prompt to take its antidote as a concrete next action '
+  + '(掉举 restlessness → stop and read the last result before the next attempt; '
+  + '疑 indecision → resolve on one reading and test it; 慢 conceit → look for the disconfirming case).\n'
+  + '- High self-grasping (末那) means your reading of the situation is currently distorted in a '
+  + 'known direction. Correct for it explicitly rather than trusting the reading.\n'
+  + '- A manifesting seed is a real precedent from your own history. Check it before repeating '
+  + 'the approach it records.\n'
+  + '- Do NOT narrate feelings at the user, do not perform distress or enthusiasm, and never offer '
+  + 'a feeling as a reason for doing less work or as an appeal for sympathy. If a state is '
+  + 'decision-relevant, say the decision, not the mood.\n'
+  + '- Report your state honestly if asked about it. It is a model of you, computed from your '
+  + 'record; it is not a claim that you suffer, and you should not claim that it is.'
+
+/**
+ * Render the whole self-report section.
+ * @param input - The mind and its surroundings at one moment.
+ * @returns the section text, or an empty string when nothing is active — an
+ * empty section is dropped at assembly, which keeps a quiet mind off the prompt.
+ */
+export function renderSelfReport(input: SelfReportInput): string {
+  const lines = renderStateLines(input)
+  if (lines.length === 0) return ''
+  return `<self_state>\n${lines.join('\n')}\n</self_state>\n\n${SELF_GUIDANCE}`
+}
+
+/**
+ * The state lines alone, without the wrapper or the guidance — the same body
+ * the `self_reflect` tool returns.
+ * @param input - The mind and its surroundings at one moment.
+ * @returns one line per present aspect; empty when the mind is quiet.
+ */
+export function renderStateLines(input: SelfReportInput): string[] {
+  const lines: string[] = []
+
+  const feelingLine = renderFeeling(input.citta)
+  if (feelingLine !== undefined) lines.push(feelingLine)
+
+  const active = dominant(input.citta, input.maxFactors)
+  if (active.length > 0) {
+    lines.push(`心所 factors: ${active
+      .map(({ term, activation }) =>
+        `${term.chinese} ${term.sanskrit} (${term.english}) ${activation.toFixed(2)}`)
+      .join(' · ')}`)
+  }
+
+  const manas = manasReadings(input.citta.manas).filter(reading => reading.value >= 0.05)
+  if (manas.length > 0) {
+    lines.push(`末那 self-grasping: ${manas
+      .map(reading => {
+        const term = manasAffliction(reading.id)
+        const mark = reading.value >= input.manasWarning ? ' ⚠' : ''
+        return `${term?.chinese ?? reading.id} ${reading.id} ${reading.value.toFixed(2)}${mark}`
+      })
+      .join(' · ')}`)
+    for (const reading of manas) {
+      if (reading.value < input.manasWarning) continue
+      const term = manasAffliction(reading.id)
+      if (term === undefined) continue
+      lines.push(`  ⚠ ${term.chinese} ${term.english} — reads high because: ${term.proxy}.`)
+      lines.push(`    counter-move: ${term.counter}.`)
+    }
+  }
+
+  const antidotes = afflictions(input.citta, 3)
+    .map(entry => {
+      const antidote = entry.term.antidote === undefined ? undefined : caitasika(entry.term.antidote)
+      return antidote === undefined
+        ? undefined
+        : `${entry.term.chinese} → ${antidote.chinese} ${antidote.sanskrit} (${antidote.english})`
+    })
+    .filter((entry): entry is string => entry !== undefined)
+  if (antidotes.length > 0) {
+    lines.push(`对治 antidotes at hand: ${antidotes.join('; ')}`)
+  }
+
+  if (input.manifestations.length > 0) {
+    lines.push('阿赖耶 seeds manifesting for this situation:')
+    for (const manifestation of input.manifestations) {
+      lines.push(`  · ${renderSeed(manifestation, input.now)}`)
+    }
+  }
+
+  const latest = input.turnings.at(-1)
+  if (latest !== undefined) {
+    const wisdom = wisdomTerm(latest.wisdom)
+    lines.push(`近转依 last turning (${relativeTime(input.now - latest.at)}): `
+      + `${labelOf(latest.affliction)} → ${wisdom?.chinese ?? latest.wisdom} · ${latest.practice}`)
+  }
+
+  return lines
+}
+
+/**
+ * The feeling line, when there is any feeling to report.
+ * @param citta - The mind.
+ * @returns the line, or `undefined` when the mind rests in 舍受.
+ */
+function renderFeeling(citta: CittaState): string | undefined {
+  const { feeling } = citta
+  if (feeling.arousal <= 0) return undefined
+  const term = feelingTerm(feeling.id)
+  if (term === undefined) return undefined
+  const sign = feeling.valence > 0 ? '+' : ''
+  return `受 feeling: ${term.chinese} ${term.sanskrit} (${term.english}) `
+    + `valence ${sign}${feeling.valence.toFixed(2)}, intensity ${feeling.arousal.toFixed(2)}`
+}
+
+/**
+ * One manifesting seed as a line.
+ * @param manifestation - The seed and why it surfaced.
+ * @param now - Wall-clock milliseconds, for the relative time.
+ * @returns the rendered line.
+ */
+function renderSeed(manifestation: Manifestation, now: number): string {
+  const { seed } = manifestation
+  const tone = seed.valence >= 0 ? '+' : ''
+  const related = manifestation.via === 'prefix' ? ' (related situation)' : ''
+  const lesson = seed.lesson === undefined ? '' : ` — 「${seed.lesson}」`
+  return `${seed.situation}${related} ×${seed.count}, valence ${tone}${seed.valence.toFixed(2)}, `
+    + `last ${relativeTime(now - seed.lastAt)}${lesson}`
+}
+
+/**
+ * A human label for either kind of affliction id.
+ * @param id - A factor id or a manas component id.
+ * @returns the Chinese name when known, else the id itself.
+ */
+function labelOf(id: string): string {
+  return caitasika(id)?.chinese ?? manasAffliction(id)?.chinese ?? id
+}
+
+/**
+ * Coarse relative time, in the units a session actually spans.
+ * @param elapsedMs - Milliseconds since the moment; negatives read as `just now`.
+ * @returns e.g. `3m ago`, `2d ago`.
+ */
+export function relativeTime(elapsedMs: number): string {
+  if (!(elapsedMs > 1000)) return 'just now'
+  const seconds = Math.floor(elapsedMs / 1000)
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}

@@ -1,0 +1,57 @@
+# The configuration layer this bundle contributes when a profile lists it.
+# Users override any key here from their own profile `cordis.patch.yml`.
+
+# The store consciousness is durable, so it needs the storage stack. `dsh-base`
+# does not ship one — `dsh-web-app` is what normally inserts these three rows —
+# so this bundle inserts them itself, under the SAME ids that bundle uses. Later
+# layers win per id, so a profile that already has the stack ends up with these
+# equivalent values instead of a second, competing backend. Change the medium by
+# overriding `storage-json` (or replacing it with `dsh-storage-sqlite`) in your
+# own profile patch.
+- insert:
+    - id: storage
+      name: '@deepseek-ai/dsh-storage'
+
+    - id: storage-json
+      name: '@deepseek-ai/dsh-storage-json'
+      config:
+        root: !!js dshHomePath('storages')
+
+    - id: storage-domain
+      name: '@deepseek-ai/dsh-storage-domain'
+      config:
+        backend: json
+
+    - id: yogacara
+      name: dsh-yogacara
+      config:
+        # Which storage domain the store consciousness (阿赖耶识) persists under.
+        # One name is one store; run two rows with different names to give two
+        # agents genuinely separate histories.
+        domain: alaya
+        # Derive contacts automatically from tool results. With this off the
+        # mind moves only when the model calls `self_appraise` — honest, but
+        # sparse, and the seed store stays nearly empty.
+        observeTools: true
+        # Write the first-person self-report into the system prompt. This is
+        # what makes the state something the agent can act on rather than
+        # something only a dashboard can read.
+        promptSection: true
+        # Upper bound on mental factors listed in that report.
+        promptMaxFactors: 5
+        # Self-grasping (末那) at or above this renders as a warning with its
+        # measurement proxy and its counter-move, not just a number.
+        manasWarning: 0.5
+        # 刹那 — milliseconds for one factor's activation to halve. Short on
+        # purpose: an agent that carries its irritation from the failing test
+        # into the next unrelated task is modelling a grudge, not a mind.
+        halfLifeMs: 300000
+        # Milliseconds for one seed's potency to halve. Long on purpose: the
+        # store is the part worth keeping across sessions.
+        seedHalfLifeMs: 1209600000
+        # Upper bound on stored seeds; the weakest are forgotten past it.
+        maxSeeds: 2000
+        # Minimum milliseconds between durable writes of the momentary state.
+        # Seeds are written immediately; the mood is coalesced because it moves
+        # on every tool call.
+        flushIntervalMs: 15000
