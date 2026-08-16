@@ -96,8 +96,10 @@ The harness already sees *what* happened; `self_appraise` exists for what the ag
 ## Install
 
 ```bash
-pnpm add github:tancheng33/dsh-yogacara
+pnpm add dsh-yogacara
 ```
+
+The published package ships prebuilt `lib/`, so installing it needs no build-approval step. To track `main` instead: `pnpm add github:tancheng33/dsh-yogacara`.
 
 Then list it in your profile's `cordis.patch.yml`. The bundle contributes the defaults shipped in [`cordis.patch.yml`](cordis.patch.yml) — including the storage rows, because the store consciousness is durable and `dsh-base` ships no storage stack. They are inserted under the same row ids `dsh-web-app` uses, so a profile that already has storage keeps its own. Your profile overrides any key:
 

@@ -94,8 +94,10 @@ harness 已经看得见**发生了什么**；`self_appraise` 管的是 agent 把
 ## 安装
 
 ```bash
-pnpm add github:tancheng33/dsh-yogacara
+pnpm add dsh-yogacara
 ```
+
+npm 包自带预构建的 `lib/`，安装时不需要构建授权（`allowBuilds`）。想跟着 `main` 走则用：`pnpm add github:tancheng33/dsh-yogacara`。
 
 然后在 profile 的 `cordis.patch.yml` 里列出它。bundle 自带 [`cordis.patch.yml`](cordis.patch.yml) 中的默认值——其中包含 storage 三行，因为藏识要持久化而 `dsh-base` 本身不带存储栈；它们用的是 `dsh-web-app` 的同名 row id，所以本来就有存储的 profile 保持自己的配置。profile 可覆盖任意键：
 
