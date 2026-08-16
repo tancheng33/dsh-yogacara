@@ -116,6 +116,18 @@ export function registerTools(ctx: Context, service: CittaService): void {
           ? 'Your mind is quiet: 舍受, no factor above the floor, no seed for this situation.'
           : value.lines.join('\n'),
       }],
+      // The card needs the headline readings at result time; replay has only
+      // what was persisted here, so the projection carries them.
+      presentationMeta: (_args, value) => ({
+        feeling: value.feeling.id,
+        valence: value.feeling.valence,
+        arousal: value.feeling.arousal,
+        factor: value.factors[0]?.chinese ?? '',
+        activation: value.factors[0]?.activation ?? 0,
+        grasp: value.manas[0]?.chinese ?? '',
+        graspValue: value.manas[0]?.value ?? 0,
+        seeds: value.seeds.length,
+      }),
     },
     execute(args) {
       const now = Date.now()
@@ -151,6 +163,26 @@ export function registerTools(ctx: Context, service: CittaService): void {
       title: args.situation === undefined ? 'Reflect' : `Reflect on ${args.situation}`,
       kind: 'other',
     }),
+    presentResult: (_args, result) => {
+      const meta = result.isError ? undefined : readMeta(result.meta)
+      if (meta === undefined) return undefined
+      const arousal = metaNumber(meta, 'arousal') ?? 0
+      if (arousal <= 0 && (metaNumber(meta, 'activation') ?? 0) <= 0) {
+        return { card: 'generic', title: '心寂静 — nothing active' }
+      }
+      const parts = [
+        `受 ${FEELING_CHINESE[metaString(meta, 'feeling') ?? ''] ?? '舍'} `
+        + signed(metaNumber(meta, 'valence') ?? 0),
+      ]
+      const factor = metaString(meta, 'factor')
+      if (factor !== undefined) parts.push(`${factor} ${(metaNumber(meta, 'activation') ?? 0).toFixed(2)}`)
+      const grasp = metaString(meta, 'grasp')
+      const graspValue = metaNumber(meta, 'graspValue') ?? 0
+      if (grasp !== undefined && graspValue > 0) parts.push(`末那 ${grasp} ${graspValue.toFixed(2)}`)
+      const seeds = metaNumber(meta, 'seeds') ?? 0
+      if (seeds > 0) parts.push(`种子 ${seeds}`)
+      return { card: 'generic', title: parts.join(' · ') }
+    },
   }))
 
   ctx.tools.register(defineTool({
@@ -242,6 +274,14 @@ export function registerTools(ctx: Context, service: CittaService): void {
           + `seed ${value.seed?.situation ?? '—'} ×${value.seed?.count ?? 0}; `
           + `末那 grip ${value.grasp.toFixed(2)}.`,
       }],
+      presentationMeta: (_args, value) => ({
+        feeling: value.feeling.chinese,
+        valence: value.feeling.valence,
+        situation: value.seed?.situation ?? '',
+        count: value.seed?.count ?? 0,
+        stirred: value.stirred[0]?.chinese ?? '',
+        grasp: value.grasp,
+      }),
     },
     async execute(args) {
       const reception = await service.receive({
@@ -285,6 +325,20 @@ export function registerTools(ctx: Context, service: CittaService): void {
       kind: 'other',
       rawInput: args,
     }),
+    presentResult: (args, result) => {
+      const meta = result.isError ? undefined : readMeta(result.meta)
+      if (meta === undefined) return undefined
+      const situation = metaString(meta, 'situation') ?? args.situation
+      const count = metaNumber(meta, 'count') ?? 0
+      const stirred = metaString(meta, 'stirred')
+      return {
+        card: 'generic',
+        title: `触 ${situation} → 受 ${metaString(meta, 'feeling') ?? '舍'} `
+          + `${signed(metaNumber(meta, 'valence') ?? 0)}`
+          + `${stirred === undefined ? '' : ` · ${stirred}`}`
+          + ` · 种子 ×${count}`,
+      }
+    },
   }))
 
   ctx.tools.register(defineTool({
@@ -320,6 +374,11 @@ export function registerTools(ctx: Context, service: CittaService): void {
               + `${seed.valence.toFixed(2)}${seed.lesson === undefined ? '' : ` — 「${seed.lesson}」`}`)
             .join('\n') + `\n(${value.total} seeds stored)`,
       }],
+      presentationMeta: (_args, value) => ({
+        matched: value.seeds.length,
+        total: value.total,
+        strongest: value.seeds[0]?.situation ?? '',
+      }),
     },
     execute(args) {
       const now = Date.now()
@@ -337,6 +396,18 @@ export function registerTools(ctx: Context, service: CittaService): void {
       title: args.situation === undefined ? 'Recall strongest seeds' : `Recall ${args.situation}`,
       kind: 'search',
     }),
+    presentResult: (_args, result) => {
+      const meta = result.isError ? undefined : readMeta(result.meta)
+      if (meta === undefined) return undefined
+      const matched = metaNumber(meta, 'matched') ?? 0
+      if (matched === 0) return { card: 'generic', title: '阿赖耶 — no precedent' }
+      const strongest = metaString(meta, 'strongest')
+      return {
+        card: 'generic',
+        title: `阿赖耶 ${matched}/${metaNumber(meta, 'total') ?? matched} seeds`
+          + `${strongest === undefined ? '' : ` · ${strongest}`}`,
+      }
+    },
   }))
 
   ctx.tools.register(defineTool({
@@ -382,6 +453,13 @@ export function registerTools(ctx: Context, service: CittaService): void {
           + `Commitment: ${value.practice} `
           + `[${value.before.toFixed(2)} → ${value.after.toFixed(2)}]`,
       }],
+      presentationMeta: (_args, value) => ({
+        affliction: value.affliction,
+        antidote: value.antidoteChinese,
+        wisdom: value.wisdomChinese,
+        before: value.before,
+        after: value.after,
+      }),
     },
     async execute(args) {
       const turned = await service.turn(
@@ -413,6 +491,19 @@ export function registerTools(ctx: Context, service: CittaService): void {
       title: `Turn ${args.affliction}`,
       kind: 'other',
     }),
+    presentResult: (args, result) => {
+      const meta = result.isError ? undefined : readMeta(result.meta)
+      if (meta === undefined) return undefined
+      const affliction = metaString(meta, 'affliction') ?? args.affliction
+      const label = caitasika(affliction)?.chinese ?? manasAffliction(affliction)?.chinese ?? affliction
+      const before = metaNumber(meta, 'before') ?? 0
+      const after = metaNumber(meta, 'after') ?? 0
+      return {
+        card: 'generic',
+        title: `转依 ${label} → ${metaString(meta, 'antidote') ?? ''} `
+          + `(${metaString(meta, 'wisdom') ?? ''}) · ${before.toFixed(2)} → ${after.toFixed(2)}`,
+      }
+    },
   }))
 }
 
@@ -491,4 +582,55 @@ function renderSeedValue(seed: {
  */
 function round(value: number): number {
   return Math.round(value * 100) / 100
+}
+
+// ---------------------------------------------------------------------------
+// UI cards
+// ---------------------------------------------------------------------------
+
+/**
+ * Read one card's persisted projection.
+ *
+ * Presenters run on live streaming AND on session-log replay, where the meta
+ * may be absent or have been written by an older build. Anything unexpected
+ * yields `undefined`, which falls the card back to generic rendering rather
+ * than throwing inside a replay.
+ * @param meta - The persisted projection.
+ * @returns the projection as a record, or `undefined` when there is none.
+ */
+function readMeta(meta: unknown): Record<string, unknown> | undefined {
+  return typeof meta === 'object' && meta !== null && !Array.isArray(meta)
+    ? meta as Record<string, unknown>
+    : undefined
+}
+
+/**
+ * Read one numeric field of a projection.
+ * @param meta - The projection.
+ * @param key - Field name.
+ * @returns the number, or `undefined` when absent or not finite.
+ */
+function metaNumber(meta: Record<string, unknown>, key: string): number | undefined {
+  const value = meta[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+/**
+ * Read one string field of a projection.
+ * @param meta - The projection.
+ * @param key - Field name.
+ * @returns the string, or `undefined` when absent or empty.
+ */
+function metaString(meta: Record<string, unknown>, key: string): string | undefined {
+  const value = meta[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+/**
+ * Format a signed reading for a card title.
+ * @param value - The reading.
+ * @returns the value with an explicit sign.
+ */
+function signed(value: number): string {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
 }
