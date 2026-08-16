@@ -16,6 +16,15 @@
     "memory"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tancheng33/dsh-yogacara.git"
+  },
+  "homepage": "https://github.com/tancheng33/dsh-yogacara#readme",
+  "bugs": {
+    "url": "https://github.com/tancheng33/dsh-yogacara/issues"
+  },
+  "author": "tancheng33",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
