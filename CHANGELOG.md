@@ -4,6 +4,7 @@
 
 ### Added
 
+- **A durable `citta/change` checkpoint per contact.** The mind's state was live-only: it moved, it shaped the prompt, and it left no trace anyone could read afterwards. Each contact now appends one whole-value checkpoint to the session log — feeling, top factors, self-grasping, expectation violation, and the seed's count and lesson — so a UI can render the state at any point without replaying the log, and a reader months later sees what the agent's state actually was when it said what it said.
 - **Feeling that comes from the conversation, not from tool results.** The input layer was built for a coding agent: contacts arrived as exit codes and test runs. A chat agent's feeling is relational — being interrupted, being answered in one syllable after a long reply, being asked the same thing again, being thanked, returning after a silence — so `src/conversation.ts` reads the shape of the exchange (timing, length, repetition, a crude lexicon for thanks and rebukes) and keys seeds by relational pattern rather than topic. Interruption arrives through 身识; everything else through 耳识. Enabled by `observeChat`, on by default.
 
 ### Changed

@@ -91,6 +91,17 @@ export class FakeFacility {
   }
 }
 
+/** A session stand-in that records what the plugin appends to its log. */
+export class FakeSession {
+  readonly appended: { type: string, data: unknown }[] = []
+
+  constructor(readonly id: string = 'session-1') {}
+
+  append(type: string, data: unknown): void {
+    this.appended.push({ type, data })
+  }
+}
+
 /** Records what the plugin contributes to the prompt. */
 export class FakePrompt {
   readonly sections: { name: string; order: number; text: (context: unknown) => string }[] = []

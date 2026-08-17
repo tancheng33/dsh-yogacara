@@ -29,6 +29,8 @@ import { caitasika, isCaitasikaId, manasAffliction } from './caitasika.ts'
 import { decaySeed, decayTo, dominant, manifest, receive, transform } from './citta.ts'
 import type { ActiveFactor, Reception } from './citta.ts'
 import { ChatTracker, contactFromTurn } from './conversation.ts'
+import { CHECKPOINT_FACTORS } from './events.ts'
+import type { CittaChangeMeta } from './events.ts'
 import { contactFromTool } from './observe.ts'
 import { renderSelfReport, renderStateLines } from './prompt.ts'
 import { MAX_TURNINGS, assertDomainName, defineAlayaDomain } from './spec.ts'
@@ -92,6 +94,8 @@ export {
   TERSE_CHARS,
 } from './conversation.ts'
 export type { ChatAct, ChatTurn } from './conversation.ts'
+export { CHECKPOINT_FACTORS } from './events.ts'
+export type { CittaChangeFactor, CittaChangeMeta } from './events.ts'
 export { contactFromTool, gateFor, normalizeSubject, subjectOf } from './observe.ts'
 export { SELF_GUIDANCE, relativeTime, renderSelfReport, renderStateLines } from './prompt.ts'
 export type { SelfReportInput } from './prompt.ts'
@@ -375,12 +379,15 @@ export class CittaService extends Service {
   // -------------------------------------------------------------------------
 
   /**
-   * Receive one contact: move the mind, perfume the situation's seed, and
-   * persist both.
+   * Receive one contact: move the mind, perfume the situation's seed, persist
+   * both, and record the resulting state on the session that caused it.
    * @param contact - The contact to receive.
+   * @param session - The session to append the durable checkpoint to. Omitted
+   * for a contact with no owning conversation, which then moves the mind and
+   * the store but leaves no trace in any log.
    * @returns what the contact produced.
    */
-  async receive(contact: Contact): Promise<Reception> {
+  async receive(contact: Contact, session?: Session): Promise<Reception> {
     // The whole in-memory move is synchronous, so two contacts in flight can
     // never interleave halfway through one appraisal. Only the durable half
     // needs the queue.
@@ -398,6 +405,14 @@ export class CittaService extends Service {
       })
     }
     this.scheduleFlush()
+    if (session !== undefined) {
+      // Appending must never break the contact that produced it.
+      try {
+        session.append('citta/change', checkpointOf(contact, reception, this.seeds.size))
+      } catch (error: unknown) {
+        this.ctx.logger?.warn?.('yogacara: could not record citta/change: %o', error)
+      }
+    }
     return reception
   }
 
@@ -497,7 +512,7 @@ export class CittaService extends Service {
         if (event.data.source.kind !== 'user') return
         const text = joinText(event.data.content)
         if (text.trim().length === 0) return
-        await this.receive(contactFromTurn(tracker.userSaid(text, Date.now())))
+        await this.receive(contactFromTurn(tracker.userSaid(text, Date.now())), session)
         return
       }
       default:
@@ -527,7 +542,10 @@ export class CittaService extends Service {
   private async observe(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): Promise<void> {
     // Self-observation would be a feedback loop: appraising the appraisal.
     if (exec.name.startsWith('self_')) return
-    await this.receive(contactFromTool(exec.name, exec.arguments, result.isError, Date.now()))
+    await this.receive(
+      contactFromTool(exec.name, exec.arguments, result.isError, Date.now()),
+      exec.agent?.session,
+    )
   }
 
   /**
@@ -668,4 +686,53 @@ function joinText(content: readonly { type: string }[]): string {
     .filter((block): block is { type: 'text', text: string } => block.type === 'text')
     .map(block => block.text)
     .join('\n')
+}
+
+/**
+ * Project one reception onto its durable checkpoint.
+ * @param contact - The contact received.
+ * @param reception - What it produced.
+ * @param seedCount - Size of the store after it landed.
+ * @returns the whole-value event payload.
+ */
+function checkpointOf(contact: Contact, reception: Reception, seedCount: number): CittaChangeMeta {
+  const factors = dominant(reception.citta, CHECKPOINT_FACTORS)
+    .map(entry => ({ id: entry.term.id, activation: round(entry.activation) }))
+  return {
+    kind: 'citta/change',
+    version: 1,
+    situation: contact.situation,
+    gate: contact.gate,
+    outcome: contact.outcome,
+    surprise: round(reception.impulse.surprise),
+    expected: {
+      valence: round(reception.impulse.expected.valence),
+      confidence: round(reception.impulse.expected.confidence),
+    },
+    feeling: {
+      id: reception.citta.feeling.id,
+      valence: round(reception.citta.feeling.valence),
+      arousal: round(reception.citta.feeling.arousal),
+    },
+    factors,
+    manas: {
+      atmaMoha: round(reception.citta.manas.atmaMoha),
+      atmaDrsti: round(reception.citta.manas.atmaDrsti),
+      atmaMana: round(reception.citta.manas.atmaMana),
+      atmaSneha: round(reception.citta.manas.atmaSneha),
+    },
+    seedCount: reception.seed.count,
+    ...(reception.seed.lesson === undefined ? {} : { lesson: reception.seed.lesson }),
+    at: contact.at,
+  }
+}
+
+/**
+ * Two decimal places, so a durable record does not claim precision the
+ * heuristics behind it do not have.
+ * @param value - The raw reading.
+ * @returns the rounded value.
+ */
+function round(value: number): number {
+  return Math.round(value * 100) / 100
 }

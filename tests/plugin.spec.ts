@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import CittaService, { assertDomainName, defineAlayaDomain } from '../src/index.ts'
 import type { Config } from '../src/index.ts'
 import type { Seed } from '../src/types.ts'
-import { boot, emit, FakeFacility } from './helpers/harness.ts'
+import { boot, emit, FakeFacility, FakeSession } from './helpers/harness.ts'
 
 describe('the plugin as the harness loads it', () => {
   it('opens its store, provides ctx.citta, and registers its four tools', async () => {
@@ -261,8 +261,8 @@ describe('durable writes under concurrency', () => {
 })
 
 describe('feeling that comes from the conversation', () => {
-  /** A session stand-in carrying only the id the tracker keys on. */
-  const session = { id: 'session-1' }
+  /** A session stand-in that records the checkpoints the plugin appends. */
+  const session = new FakeSession()
 
   /**
    * Say something as a person.
@@ -352,5 +352,87 @@ describe('feeling that comes from the conversation', () => {
     human(ctx, '谢谢')
     await settle()
     expect(ctx.citta.state().contacts).toBe(0)
+  })
+})
+
+describe('the durable record of the mind moving', () => {
+  const session = new FakeSession('session-record')
+
+  /** Let the fire-and-forget listener settle. */
+  const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 10))
+
+  it('appends one whole-value checkpoint per contact', async () => {
+    const { ctx } = await boot()
+    session.appended.length = 0
+    emit(ctx, 'session/event', session, {
+      type: 'user/message',
+      data: { source: { kind: 'user' }, content: [{ type: 'text', text: '太好了，谢谢' }] },
+    })
+    await settle()
+
+    expect(session.appended).toHaveLength(1)
+    const [record] = session.appended
+    expect(record!.type).toBe('citta/change')
+    const data = record!.data as Record<string, unknown>
+    expect(data.kind).toBe('citta/change')
+    expect(data.situation).toBe('chat:warmth')
+    expect(data.gate).toBe('ear')
+    expect(data.outcome).toBe('favorable')
+  })
+
+  it('carries enough on its own to render without any earlier event', async () => {
+    const { ctx } = await boot()
+    session.appended.length = 0
+    emit(ctx, 'session/event', session, {
+      type: 'user/message',
+      data: { source: { kind: 'user' }, content: [{ type: 'text', text: '不对，不是这个' }] },
+    })
+    await settle()
+
+    const data = session.appended.at(-1)!.data as {
+      feeling: { id: string, valence: number }
+      factors: { id: string, activation: number }[]
+      manas: Record<string, number>
+      surprise: number
+      expected: { valence: number, confidence: number }
+      seedCount: number
+    }
+    expect(data.feeling.id).toBe('daurmanasya')
+    expect(data.feeling.valence).toBeLessThan(0)
+    expect(data.factors.length).toBeGreaterThan(0)
+    expect(Object.keys(data.manas).sort())
+      .toEqual(['atmaDrsti', 'atmaMana', 'atmaMoha', 'atmaSneha'])
+    expect(data.surprise).toBe(1)
+    expect(data.expected).toEqual({ valence: 0, confidence: 0 })
+    expect(data.seedCount).toBe(1)
+  })
+
+  it('rounds every reading, claiming no more precision than it has', async () => {
+    const { ctx } = await boot()
+    session.appended.length = 0
+    await ctx.citta.receive({
+      gate: 'ear', situation: 'chat:reply', outcome: 'adverse', intensity: 0.37, at: Date.now(),
+    }, session as never)
+
+    const data = session.appended.at(-1)!.data as {
+      feeling: { valence: number, arousal: number }
+      surprise: number
+      manas: Record<string, number>
+    }
+    const twoPlaces = (value: number): boolean => value === Math.round(value * 100) / 100
+    expect(twoPlaces(data.feeling.valence)).toBe(true)
+    expect(twoPlaces(data.feeling.arousal)).toBe(true)
+    expect(twoPlaces(data.surprise)).toBe(true)
+    for (const reading of Object.values(data.manas)) expect(twoPlaces(reading)).toBe(true)
+  })
+
+  it('leaves no trace for a contact with no owning conversation', async () => {
+    const { ctx } = await boot()
+    session.appended.length = 0
+    await ctx.citta.receive({
+      gate: 'eye', situation: 'read:a.ts', outcome: 'favorable', intensity: 0.4, at: Date.now(),
+    })
+    expect(session.appended).toHaveLength(0)
+    expect(ctx.citta.state().contacts).toBe(1)
   })
 })
