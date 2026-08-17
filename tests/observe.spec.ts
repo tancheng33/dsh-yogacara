@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contactFromTool, gateFor, normalizeSubject, subjectOf } from '../src/observe.ts'
+import { contactFromTool, gateFor, normalizeSubject, payloadSegment, subjectOf } from '../src/observe.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -98,5 +98,35 @@ describe('the contact a tool result constitutes', () => {
     const passed = contactFromTool('bash', { command: 'pytest' }, false, T0)
     expect(failed.outcome).toBe('adverse')
     expect(failed.intensity).toBeGreaterThan(passed.intensity)
+  })
+})
+
+describe('a compound command is about its payload, not its setup', () => {
+  it('looks past the navigation that positioned the shell', () => {
+    // Taken from a real store: nine different jobs had all collapsed onto `cd`.
+    expect(normalizeSubject('cd /tmp/dsh-yogacara && npx vitest run')).toBe('npx-vitest-run')
+    expect(normalizeSubject('cd /tmp/dsh-yogacara && npm run build')).toBe('npm-run-build')
+    expect(normalizeSubject('cd /tmp/dsh-yogacara && npx vitest run'))
+      .not.toBe(normalizeSubject('cd /tmp/dsh-yogacara && npm run build'))
+  })
+
+  it('looks past a leading environment assignment', () => {
+    expect(normalizeSubject('DST=/a/b/c cp -r lib $DST')).toBe('cp-lib')
+  })
+
+  it('keys a pipeline on what produced the output, not what formatted it', () => {
+    expect(normalizeSubject('find ~/.dsh -name "*.json" | head -5')).toBe('find-/.dsh')
+  })
+
+  it('keeps a bare command untouched', () => {
+    expect(payloadSegment('git status')).toBe('git status')
+  })
+
+  it('falls back to the whole command when every segment is setup', () => {
+    expect(normalizeSubject('cd /tmp && cd /var')).toBe('cd-/tmp')
+  })
+
+  it('still reads a test run through the tongue after the setup is stripped', () => {
+    expect(gateFor('bash', 'cd /tmp/x && npx vitest run')).toBe('tongue')
   })
 })

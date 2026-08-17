@@ -56,6 +56,17 @@ const COMMAND_WORDS = 2
  */
 const DELEGATING_WORDS: ReadonlySet<string> = new Set([
   'run', 'exec', 'x', 'dlx', 'test', 'workspace', '-m',
+  'npx', 'pnpx', 'bunx', 'sudo', 'time', 'env',
+])
+
+/**
+ * Commands that only position the shell for the real one. A compound command
+ * that starts with these is not about them: `cd /tmp/x && npx vitest` is a test
+ * run, and keying it on `cd` merges every test run in that directory with every
+ * build, lint, and listing there.
+ */
+const NAVIGATION_COMMANDS: ReadonlySet<string> = new Set([
+  'cd', 'pushd', 'popd', 'export', 'source', 'set', 'unset', 'mkdir', 'touch',
 ])
 
 /**
@@ -93,6 +104,31 @@ export function subjectOf(args: unknown): string {
 }
 
 /**
+ * The segment of a compound command that does the actual work.
+ *
+ * Sequencing operators chain a command with its setup, and pipes chain it with
+ * its formatting; neither is what the situation is about. Leading navigation
+ * and environment assignments are dropped, and of what remains the first
+ * segment is the payload — `cd /tmp/x && npx vitest | tail` is a test run.
+ * @param command - The raw command line.
+ * @returns the payload segment, or the whole command when none stands out.
+ */
+export function payloadSegment(command: string): string {
+  const sequenced = command.split(/&&|\|\||;/).map(part => part.trim()).filter(part => part.length > 0)
+  const substantive = sequenced.filter(part => {
+    const head = part.split(/\s+/)[0] ?? ''
+    // `VAR=value cmd` and `cd somewhere` are both setup, not subject.
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(head)) return part.split(/\s+/).length > 1
+    return !NAVIGATION_COMMANDS.has(head)
+  })
+  const chosen = substantive[0] ?? sequenced[0] ?? command
+  // A pipeline's subject is what produced the output, not what formatted it.
+  const piped = chosen.split('|')[0]?.trim() ?? chosen
+  // An assignment prefix can still lead the chosen segment.
+  return piped.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, '')
+}
+
+/**
  * Reduce a subject to a stable key: the head of a command, or the tail of a
  * path. A key that changes on every call would give every call its own seed and
  * the store would never accumulate anything.
@@ -127,7 +163,7 @@ export function normalizeSubject(subject: string): string {
 function commandHead(command: string): string {
   const kept: string[] = []
   let meaningful = 0
-  for (const word of command.split(/\s+/)) {
+  for (const word of payloadSegment(command).split(/\s+/)) {
     // A flag, or the value of one, says how — not what.
     if (word.startsWith('-') && !DELEGATING_WORDS.has(word)) continue
     kept.push(word)
