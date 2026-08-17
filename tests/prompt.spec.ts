@@ -143,3 +143,20 @@ describe('relative time', () => {
     expect(relativeTime(3 * 86_400_000)).toBe('3d ago')
   })
 })
+
+describe('the expectation line', () => {
+  it('tells the agent when something was genuinely news', () => {
+    const lines = renderStateLines(input({ citta: stirred, lastSurprise: 0.85 }))
+    expect(lines.some(line => line.includes('预期') && line.includes('news, not noise'))).toBe(true)
+  })
+
+  it('tells it when its own store already called this one', () => {
+    const lines = renderStateLines(input({ citta: stirred, lastSurprise: 0.1 }))
+    expect(lines.some(line => line.includes('confirmation, not information'))).toBe(true)
+  })
+
+  it('stays off the prompt before anything has been received', () => {
+    const lines = renderStateLines(input({ citta: stirred }))
+    expect(lines.some(line => line.includes('预期'))).toBe(false)
+  })
+})

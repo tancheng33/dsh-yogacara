@@ -183,6 +183,8 @@ export class CittaService extends Service {
   private global?: DomainGlobal<AlayaGlobal>
   /** The situation the last contact named, used to manifest seeds in the prompt. */
   private lastSituation?: string
+  /** Expectation violation of the last contact, reported alongside the feeling. */
+  private lastSurprise?: number
   private flushTimer?: ReturnType<typeof setTimeout>
   private flushing?: Promise<void>
   private writable = true
@@ -352,6 +354,7 @@ export class CittaService extends Service {
     this.citta = reception.citta
     this.seeds.set(reception.seed.situation, reception.seed)
     this.lastSituation = reception.seed.situation
+    this.lastSurprise = reception.impulse.surprise
 
     const table = this.table
     if (this.writable && table !== undefined) {
@@ -464,6 +467,7 @@ export class CittaService extends Service {
       turnings: this.turnings,
       maxFactors: this.config.promptMaxFactors,
       manasWarning: this.config.manasWarning,
+      ...(this.lastSurprise === undefined ? {} : { lastSurprise: this.lastSurprise }),
       // Scaled off the factor half-life so a deployment that tunes how long a
       // mood lasts also tunes how long a commitment stays on the prompt.
       turningMaxAgeMs: this.tuning.halfLifeMs * TURNING_VISIBLE_HALF_LIVES,

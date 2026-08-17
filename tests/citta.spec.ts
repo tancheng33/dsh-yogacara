@@ -5,6 +5,11 @@ import {
   decaySeed,
   decayTo,
   dominant,
+  expectation,
+  HIGH_SURPRISE,
+  LOW_SURPRISE,
+  NO_EXPECTATION,
+  surpriseOf,
   feelingOf,
   freshMind,
   graspStrength,
@@ -14,7 +19,7 @@ import {
   transform,
 } from '../src/citta.ts'
 import { DEFAULT_TUNING } from '../src/types.ts'
-import type { CittaState, Contact, MindView, Seed } from '../src/types.ts'
+import type { CittaState, Contact, Feeling, Impulse, MindView, Seed } from '../src/types.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -32,6 +37,15 @@ function contact(overrides: Partial<Contact> = {}): Contact {
     at: T0,
     ...overrides,
   }
+}
+
+/**
+ * Build an impulse literal for a perfuming test.
+ * @param feeling - The feeling the contact carried.
+ * @returns the impulse.
+ */
+function impulseOf(feeling: Feeling): Impulse {
+  return { factors: {}, feeling, manas: {}, surprise: 1, expected: { valence: 0, confidence: 0 } }
 }
 
 /**
@@ -220,42 +234,28 @@ describe('现行熏种子 — receiving a contact', () => {
 
 describe('熏习 — perfuming a seed', () => {
   it('averages valence across contacts instead of tracking only the last', () => {
-    const first = perfume(undefined, contact({ outcome: 'favorable' }), {
-      factors: {}, feeling: { id: 'sukha', valence: 0.6, arousal: 0.6 }, manas: {},
-    })
-    const second = perfume(first, contact({ at: T0 + 1000 }), {
-      factors: {}, feeling: { id: 'duhkha', valence: -0.6, arousal: 0.6 }, manas: {},
-    })
+    const first = perfume(undefined, contact({ outcome: 'favorable' }), impulseOf({ id: 'sukha', valence: 0.6, arousal: 0.6 }))
+    const second = perfume(first, contact({ at: T0 + 1000 }), impulseOf({ id: 'duhkha', valence: -0.6, arousal: 0.6 }))
     expect(second.count).toBe(2)
     expect(second.valence).toBeCloseTo(0, 5)
   })
 
   it('carries the newest lesson and keeps the old one when none is given', () => {
-    const first = perfume(undefined, contact({ note: 'run the baseline first' }), {
-      factors: {}, feeling: { id: 'duhkha', valence: -0.6, arousal: 0.6 }, manas: {},
-    })
+    const first = perfume(undefined, contact({ note: 'run the baseline first' }), impulseOf({ id: 'duhkha', valence: -0.6, arousal: 0.6 }))
     expect(first.lesson).toBe('run the baseline first')
-    const second = perfume(first, contact({ at: T0 + 1000 }), {
-      factors: {}, feeling: { id: 'duhkha', valence: -0.6, arousal: 0.6 }, manas: {},
-    })
+    const second = perfume(first, contact({ at: T0 + 1000 }), impulseOf({ id: 'duhkha', valence: -0.6, arousal: 0.6 }))
     expect(second.lesson).toBe('run the baseline first')
   })
 
   it('keeps the first-seen time and advances the last-seen time', () => {
-    const first = perfume(undefined, contact(), {
-      factors: {}, feeling: { id: 'duhkha', valence: -0.6, arousal: 0.6 }, manas: {},
-    })
-    const second = perfume(first, contact({ at: T0 + 5000 }), {
-      factors: {}, feeling: { id: 'duhkha', valence: -0.6, arousal: 0.6 }, manas: {},
-    })
+    const first = perfume(undefined, contact(), impulseOf({ id: 'duhkha', valence: -0.6, arousal: 0.6 }))
+    const second = perfume(first, contact({ at: T0 + 5000 }), impulseOf({ id: 'duhkha', valence: -0.6, arousal: 0.6 }))
     expect(second.firstAt).toBe(T0)
     expect(second.lastAt).toBe(T0 + 5000)
   })
 
   it('decays potency over the seed half-life, far slower than a mood', () => {
-    const seed = perfume(undefined, contact(), {
-      factors: {}, feeling: { id: 'duhkha', valence: -0.6, arousal: 0.6 }, manas: {},
-    })
+    const seed = perfume(undefined, contact(), impulseOf({ id: 'duhkha', valence: -0.6, arousal: 0.6 }))
     const aged = decaySeed(seed, T0 + DEFAULT_TUNING.seedHalfLifeMs)
     expect(aged.potency).toBeCloseTo(seed.potency / 2, 5)
   })
@@ -355,5 +355,82 @@ describe('reading the state', () => {
 
   it('reports the tightest component as the grip, not the average', () => {
     expect(graspStrength({ atmaMoha: 0.1, atmaDrsti: 0.9, atmaMana: 0, atmaSneha: 0 })).toBe(0.9)
+  })
+})
+
+describe('预期 — expectation and its violation', () => {
+  /**
+   * Build a seed that has settled into a stable expectation.
+   * @param valence - What the situation has felt like.
+   * @param count - How many contacts formed it.
+   * @returns the seed.
+   */
+  function settled(valence: number, count = 6): Seed {
+    return {
+      situation: 'bash:pytest',
+      potency: 0.9,
+      count,
+      valence,
+      gate: 'body',
+      factors: [],
+      firstAt: T0 - 60_000,
+      lastAt: T0 - 1000,
+    }
+  }
+
+  it('predicts nothing about a situation it has never met', () => {
+    expect(expectation(undefined, T0)).toEqual(NO_EXPECTATION)
+    expect(surpriseOf(contact(), NO_EXPECTATION)).toBe(1)
+  })
+
+  it('grows confident with repetition and loses it as the seed decays', () => {
+    expect(expectation(settled(-0.6, 1), T0).confidence)
+      .toBeLessThan(expectation(settled(-0.6, 6), T0).confidence)
+    expect(expectation(settled(-0.6), T0 + DEFAULT_TUNING.seedHalfLifeMs * 4).confidence)
+      .toBeLessThan(expectation(settled(-0.6), T0).confidence)
+  })
+
+  it('calls a confidently predicted outcome unsurprising, and its opposite news', () => {
+    const predicted = expectation(settled(-0.9), T0)
+    expect(surpriseOf(contact({ outcome: 'adverse' }), predicted)).toBeLessThan(LOW_SURPRISE)
+    expect(surpriseOf(contact({ outcome: 'favorable' }), predicted)).toBeGreaterThan(HIGH_SURPRISE)
+  })
+
+  it('lets the same failure land harder when it was not expected', () => {
+    const expected = receive(view(freshMind(T0), [settled(-0.9)]), contact())
+    const unexpected = receive(view(freshMind(T0), [settled(0.9)]), contact())
+    expect(unexpected.citta.feeling.arousal).toBeGreaterThan(expected.citta.feeling.arousal)
+    expect(Math.abs(unexpected.citta.feeling.valence))
+      .toBeGreaterThan(Math.abs(expected.citta.feeling.valence))
+  })
+
+  it('meets a failure it saw coming with resignation rather than anger', () => {
+    const expected = appraise(contact(), freshMind(T0), settled(-0.9))
+    const unexpected = appraise(contact(), freshMind(T0), settled(0.9))
+    expect(expected.factors.kausidya).toBeGreaterThan(0)
+    expect(expected.factors.upeksa).toBeGreaterThan(0)
+    expect(unexpected.factors.pratigha!).toBeGreaterThan(expected.factors.pratigha!)
+    expect(unexpected.factors.vicikitsa).toBeGreaterThan(0)
+  })
+
+  it('keeps routine success quiet and unexpected success relieved', () => {
+    const routine = appraise(contact({ outcome: 'favorable' }), freshMind(T0), settled(0.9))
+    const relief = appraise(contact({ outcome: 'favorable' }), freshMind(T0), settled(-0.9))
+    expect(routine.factors.upeksa).toBeGreaterThan(0)
+    expect(routine.factors.samadhi).toBeGreaterThan(0)
+    expect(relief.factors.prasrabdhi!).toBeGreaterThan(routine.factors.prasrabdhi ?? 0)
+    expect(relief.surprise).toBeGreaterThan(routine.surprise)
+  })
+
+  it('makes the first encounter with anything fully felt', () => {
+    const first = receive(view(freshMind(T0)), contact({ intensity: 1 }))
+    expect(first.impulse.surprise).toBe(1)
+    expect(first.citta.feeling.arousal).toBe(1)
+  })
+
+  it('reports what it expected, so the reading can be audited', () => {
+    const { impulse } = receive(view(freshMind(T0), [settled(-0.9)]), contact())
+    expect(impulse.expected.valence).toBeCloseTo(-0.9, 5)
+    expect(impulse.expected.confidence).toBeGreaterThan(0.5)
   })
 })

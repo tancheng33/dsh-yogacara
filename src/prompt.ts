@@ -33,6 +33,11 @@ export interface SelfReportInput {
    * skim its own state.
    */
   readonly turningMaxAgeMs: number
+  /**
+   * Expectation violation of the most recent contact, in [0, 1]. Absent when
+   * nothing has been received yet.
+   */
+  readonly lastSurprise?: number
   /** Wall-clock milliseconds, for relative times. */
   readonly now: number
 }
@@ -81,6 +86,7 @@ export function renderStateLines(input: SelfReportInput): string[] {
 
   const feelingLine = renderFeeling(input.citta)
   if (feelingLine !== undefined) lines.push(feelingLine)
+  if (input.lastSurprise !== undefined) lines.push(renderSurprise(input.lastSurprise))
 
   const active = dominant(input.citta, input.maxFactors)
   if (active.length > 0) {
@@ -137,6 +143,24 @@ export function renderStateLines(input: SelfReportInput): string[] {
   }
 
   return lines
+}
+
+/**
+ * The expectation line.
+ *
+ * Worth its own line because it is the difference between "this hurt" and
+ * "this hurt AND I did not see it coming" — the second is a reason to stop and
+ * look, the first often is not.
+ * @param surprise - Expectation violation in [0, 1].
+ * @returns the rendered line.
+ */
+function renderSurprise(surprise: number): string {
+  const reading = surprise >= 0.6
+    ? 'your store did not predict this — treat it as news, not noise'
+    : surprise <= 0.25
+      ? 'your store called this one; it is confirmation, not information'
+      : 'partly expected'
+  return `预期 expectation: violation ${surprise.toFixed(2)} — ${reading}`
 }
 
 /**

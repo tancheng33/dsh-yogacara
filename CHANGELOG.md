@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **A contact's intensity is no longer a constant.** It used to be 0.3 for any success and 0.6 for any failure, so nothing was ever surprising and the fourth failure of a test you already knew was broken landed exactly like the first. The store already held a prediction — a seed's running valence, weighted by its count and surviving potency — and that prediction is now compared against what actually happened. The violation decides how much of the contact is felt (a fully expected one lands at 45% of its magnitude) and which factors it stirs: a predicted failure produces 懈怠 resignation rather than 嗔 anger, routine success stays quiet at 行舍, and an outcome that contradicts a confident prediction stirs 寻 and 疑 — the reading that says *stop and look*.
+- The self-report now carries an 预期 line, so the agent can tell "this hurt" from "this hurt and nothing predicted it".
+
 ## 0.1.1
 
 ### Fixed

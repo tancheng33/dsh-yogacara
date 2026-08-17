@@ -9,7 +9,8 @@
 import { writeFile } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
-  DEFENSIVE_GRIP, GATE_RULES, SEED_ENTRENCHED,
+  DEFENSIVE_GRIP, EXPECTATION_CONFIDENT_AT, EXPECTED_SHARE, GATE_RULES,
+  HIGH_SURPRISE, LOW_SURPRISE, SEED_ENTRENCHED,
   STREAK_CHURN, STREAK_CONCEIT, STREAK_DULL,
 } from '../src/citta.ts'
 import { CAITASIKAS, CONSCIOUSNESSES, caitasika } from '../src/caitasika.ts'
@@ -56,7 +57,27 @@ export function renderAppraisalDoc() {
     'Weights are scaled by the contact\'s intensity and combined saturatingly, so a',
     'mind can be fully irritated but never doubly irritated.',
     '',
-    '## Feeling',
+    '## Expectation, and how much of a contact is felt',
+  '',
+  'The store already holds a prediction: a seed\'s running valence is what this',
+  'situation has felt like, and its count and surviving potency are how much that',
+  'history deserves to be believed. A contact is compared against it, and the',
+  'violation decides how much of the contact\'s magnitude actually lands.',
+  '',
+  '| what happened | felt at | and it stirs |',
+  '|---|---|---|',
+  `| never met this situation before | full magnitude | 寻 vitarka, 作意 manaskara — everything is news the first time |`,
+  `| contradicted a confident prediction | full magnitude | 寻 vitarka · 作意 manaskara, plus 疑 vicikitsa when adverse, 轻安 prasrabdhi when favorable |`,
+  `| a predicted failure failed | ${EXPECTED_SHARE} of magnitude | 懈怠 kausidya · 行舍 upeksa — resignation, not anger |`,
+  `| a predicted success succeeded | ${EXPECTED_SHARE} of magnitude | 行舍 upeksa · 定 samadhi — routine competence is quiet |`,
+  '',
+  `A prediction is trusted in proportion to its evidence, reaching full confidence at ${EXPECTATION_CONFIDENT_AT} contacts and decaying with the seed. Surprise at or above ${HIGH_SURPRISE} counts as news; at or below ${LOW_SURPRISE} the store called it.`,
+  '',
+  'This is what separates the model from a meter. A meter reads the same number',
+  'every time the same thing happens; the fourth failure of a test you already',
+  'knew was broken should not land like the first.',
+  '',
+  '## Feeling',
     '',
     '`body` and `tongue` are bodily seats, so they yield 苦 / 乐; `eye`, `ear`, and',
     '`nose` are read cognitively, so they yield 忧 / 喜. A neutral contact is 舍.',

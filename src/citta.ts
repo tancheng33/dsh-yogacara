@@ -58,6 +58,25 @@ export const SEED_ENTRENCHED = 3
 /** Above this grip, a correction is met defensively instead of received. */
 export const DEFENSIVE_GRIP = 0.5
 
+/**
+ * The share of a contact's magnitude that is felt when it was fully expected.
+ * Not zero — a failure you predicted is still a failure — but a mind that felt
+ * the expected exactly as hard as the surprising would be a meter, not a mind.
+ */
+export const EXPECTED_SHARE = 0.45
+
+/**
+ * How many prior contacts it takes for a seed's prediction to be trusted fully.
+ * One bad run is an anecdote; four make an expectation.
+ */
+export const EXPECTATION_CONFIDENT_AT = 4
+
+/** Surprise at or above this is treated as news worth attending to. */
+export const HIGH_SURPRISE = 0.6
+
+/** Surprise at or below this means the store called it. */
+export const LOW_SURPRISE = 0.25
+
 // ---------------------------------------------------------------------------
 // Numeric helpers
 // ---------------------------------------------------------------------------
@@ -161,9 +180,13 @@ export function decayTo(
  * product push back physically, so they yield 苦/乐; `eye`, `ear`, and `nose`
  * are read cognitively, so they yield 忧/喜. A neutral contact is 舍.
  * @param contact - The contact being received.
- * @returns the feeling, with arousal scaled by the contact's intensity.
+ * @param surprise - Expectation violation in [0, 1]; 0 means the store called
+ * it exactly, and the feeling lands at {@link EXPECTED_SHARE} of its magnitude.
+ * Defaults to 1: a caller with no expectation to offer is describing a contact
+ * nothing predicted, and everything is news the first time.
+ * @returns the feeling, scaled by intensity and by how much of it was news.
  */
-export function feelingOf(contact: Contact): Feeling {
+export function feelingOf(contact: Contact, surprise = 1): Feeling {
   const intensity = clamp(contact.intensity, 0, 1)
   if (contact.outcome === 'neutral' || intensity === 0) {
     return { id: 'upeksa', valence: 0, arousal: 0 }
@@ -174,11 +197,87 @@ export function feelingOf(contact: Contact): Feeling {
     ? (favorable ? 'sukha' : 'duhkha')
     : (favorable ? 'saumanasya' : 'daurmanasya')
   const magnitude = sensory ? 0.6 : 0.8
+  // What the contact was worth objectively, times how much of it was news.
+  const felt = intensity * feltShare(clamp(surprise, 0, 1))
   return {
     id,
-    valence: (favorable ? magnitude : -magnitude) * intensity,
-    arousal: intensity,
+    valence: (favorable ? magnitude : -magnitude) * felt,
+    arousal: felt,
   }
+}
+
+/**
+ * How much of a contact's objective magnitude is actually felt, given how
+ * surprising it was.
+ *
+ * A fully expected event still lands — a test you knew would fail is not
+ * pleasant — but it lands at {@link EXPECTED_SHARE} of its magnitude, and the
+ * unexpected lands at full. This is the difference between a mind and a meter:
+ * the meter reads the same number every time the same thing happens.
+ * @param surprise - Expectation violation in [0, 1].
+ * @returns the share of magnitude that reaches the feeling, in [0, 1].
+ */
+function feltShare(surprise: number): number {
+  return EXPECTED_SHARE + (1 - EXPECTED_SHARE) * surprise
+}
+
+// ---------------------------------------------------------------------------
+// 预期 — expectation and its violation
+// ---------------------------------------------------------------------------
+
+/** What the store predicts about a situation, and how much that prediction is worth. */
+export interface Expectation {
+  /** Predicted hedonic tone in [-1, 1]; 0 when the situation is new. */
+  readonly valence: number
+  /** How far the prediction is trusted, in [0, 1]. A new situation predicts nothing. */
+  readonly confidence: number
+}
+
+/** The absence of any expectation: a situation met for the first time. */
+export const NO_EXPECTATION: Expectation = { valence: 0, confidence: 0 }
+
+/**
+ * What the store leads the mind to expect of one situation.
+ *
+ * This is 种子生现行 read as a prediction: the seed's running valence is what
+ * this situation has felt like, and its count and surviving potency are how
+ * much that history deserves to be believed.
+ * @param seed - The seed for the situation, when one exists.
+ * @param now - Wall-clock milliseconds, for decay.
+ * @param tuning - Half-lives and floor.
+ * @returns the prediction; {@link NO_EXPECTATION} for a situation never met.
+ */
+export function expectation(
+  seed: Seed | undefined,
+  now: number,
+  tuning: CittaTuning = DEFAULT_TUNING,
+): Expectation {
+  if (seed === undefined) return NO_EXPECTATION
+  const surviving = decaySeed(seed, now, tuning).potency
+  const evidence = Math.min(seed.count / EXPECTATION_CONFIDENT_AT, 1)
+  return { valence: seed.valence, confidence: clamp(evidence * surviving, 0, 1) }
+}
+
+/**
+ * How much of one contact was news.
+ *
+ * Zero means the store predicted exactly this and was believed; one means the
+ * contact contradicted a confident prediction outright. A situation with no
+ * history is maximally surprising — everything is news the first time.
+ * @param contact - The contact received.
+ * @param predicted - What the store expected of it.
+ * @returns the expectation violation in [0, 1].
+ */
+export function surpriseOf(contact: Contact, predicted: Expectation): number {
+  if (contact.outcome === 'neutral') return 0
+  if (predicted.confidence <= 0) return 1
+  // Compare only direction and degree of the hedonic tone: the store predicts
+  // how a situation feels, not which exit code it produces.
+  const actual = contact.outcome === 'favorable' ? 1 : -1
+  const error = Math.abs(actual - predicted.valence) / 2
+  // An unconfident prediction cannot be violated much, so the unexplained
+  // remainder counts as news.
+  return clamp(error * predicted.confidence + (1 - predicted.confidence), 0, 1)
 }
 
 /** Factor weights contributed by one rule, before intensity scaling. */
@@ -229,10 +328,20 @@ export const GATE_RULES: Readonly<Record<SenseGate, Readonly<Record<'favorable' 
  * @param contact - The contact being received.
  * @param citta - The mind receiving it, already decayed to the contact's moment.
  * @param seed - The existing seed for this situation, when one exists.
+ * @param tuning - Half-lives and floor, used to age the seed's prediction.
  * @returns the impulse; caller applies it with {@link receive}.
  */
-export function appraise(contact: Contact, citta: CittaState, seed?: Seed): Impulse {
-  const intensity = clamp(contact.intensity, 0, 1)
+export function appraise(
+  contact: Contact,
+  citta: CittaState,
+  seed?: Seed,
+  tuning: CittaTuning = DEFAULT_TUNING,
+): Impulse {
+  const predicted = expectation(seed, contact.at, tuning)
+  const surprise = surpriseOf(contact, predicted)
+  // Every factor the contact stirs is scaled by what was felt, not by the raw
+  // magnitude: routine success should be emotionally quiet.
+  const intensity = clamp(contact.intensity, 0, 1) * feltShare(surprise)
   const factors: FactorWeights = {}
   const manas: Partial<Record<keyof ManasState, number>> = {}
 
@@ -337,6 +446,28 @@ export function appraise(contact: Contact, citta: CittaState, seed?: Seed): Impu
     grasp('atmaMoha', -0.05)
   }
 
+  // What surprise itself does. An outcome that contradicts a confident
+  // expectation is the one that has to be looked at; an outcome that confirms
+  // a bad expectation is where a mind quietly gives up instead.
+  if (surprise >= HIGH_SURPRISE) {
+    stir('vitarka', 0.35)
+    stir('manaskara', 0.3)
+    if (contact.outcome === 'adverse') stir('vicikitsa', 0.3)
+    // Something worked that was not supposed to: relief, and no grounds for conceit.
+    if (contact.outcome === 'favorable') stir('prasrabdhi', 0.3)
+  } else if (surprise <= LOW_SURPRISE && predicted.confidence > 0) {
+    if (contact.outcome === 'adverse' && predicted.valence < 0) {
+      // Knew it would fail, and it failed. This is resignation, not anger.
+      stir('kausidya', 0.3)
+      stir('upeksa', 0.2)
+    }
+    if (contact.outcome === 'favorable' && predicted.valence > 0) {
+      // Routine competence. A mind that celebrated this would be exhausting.
+      stir('upeksa', 0.25)
+      stir('samadhi', 0.2)
+    }
+  }
+
   // Taking one's own earlier output as the object is where self-love grows.
   if (contact.situation.startsWith('self:')) {
     grasp('atmaSneha', 0.08)
@@ -345,7 +476,7 @@ export function appraise(contact: Contact, citta: CittaState, seed?: Seed): Impu
     grasp('atmaSneha', -0.03)
   }
 
-  return { factors, feeling: feelingOf(contact), manas }
+  return { factors, feeling: feelingOf(contact, surprise), manas, surprise, expected: predicted }
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +509,7 @@ export function receive(
 ): Reception {
   const decayed = decayTo(view.citta, contact.at, tuning)
   const existing = view.seeds.get(contact.situation)
-  const impulse = appraise(contact, decayed, existing)
+  const impulse = appraise(contact, decayed, existing, tuning)
 
   const factors: Partial<Record<CaitasikaId, number>> = { ...decayed.factors }
   for (const [id, added] of Object.entries(impulse.factors) as [CaitasikaId, number][]) {

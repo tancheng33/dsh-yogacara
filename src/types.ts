@@ -271,6 +271,14 @@ export interface Contact {
 
 /** The mental factors one contact stirs, before decay and clamping. */
 export interface Impulse {
+  /**
+   * How much of the contact was news, in [0, 1] — the expectation violation
+   * that decided how hard it landed. A situation met for the first time is
+   * maximally surprising.
+   */
+  readonly surprise: number
+  /** What the store predicted before the contact arrived. */
+  readonly expected: { readonly valence: number, readonly confidence: number }
   /** Factor id → additive activation, each in (0, 1]. */
   readonly factors: Readonly<Partial<Record<CaitasikaId, number>>>
   /** The feeling the contact carries. */

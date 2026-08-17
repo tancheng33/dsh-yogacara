@@ -25,6 +25,26 @@ and the factors. The same failure through `ear` (being corrected) and through
 Weights are scaled by the contact's intensity and combined saturatingly, so a
 mind can be fully irritated but never doubly irritated.
 
+## Expectation, and how much of a contact is felt
+
+The store already holds a prediction: a seed's running valence is what this
+situation has felt like, and its count and surviving potency are how much that
+history deserves to be believed. A contact is compared against it, and the
+violation decides how much of the contact's magnitude actually lands.
+
+| what happened | felt at | and it stirs |
+|---|---|---|
+| never met this situation before | full magnitude | 寻 vitarka, 作意 manaskara — everything is news the first time |
+| contradicted a confident prediction | full magnitude | 寻 vitarka · 作意 manaskara, plus 疑 vicikitsa when adverse, 轻安 prasrabdhi when favorable |
+| a predicted failure failed | 0.45 of magnitude | 懈怠 kausidya · 行舍 upeksa — resignation, not anger |
+| a predicted success succeeded | 0.45 of magnitude | 行舍 upeksa · 定 samadhi — routine competence is quiet |
+
+A prediction is trusted in proportion to its evidence, reaching full confidence at 4 contacts and decaying with the seed. Surprise at or above 0.6 counts as news; at or below 0.25 the store called it.
+
+This is what separates the model from a meter. A meter reads the same number
+every time the same thing happens; the fourth failure of a test you already
+knew was broken should not land like the first.
+
 ## Feeling
 
 `body` and `tongue` are bodily seats, so they yield 苦 / 乐; `eye`, `ear`, and
