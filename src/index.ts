@@ -24,6 +24,8 @@ import s from '@deepseek-ai/schemastery'
 import type { DomainGlobal, KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+// Type-only: resolves ctx.sessionProjections for the optional projection child.
+import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { caitasika, isCaitasikaId, manasAffliction } from './caitasika.ts'
 import { decaySeed, decayTo, dominant, manifest, receive, transform } from './citta.ts'
@@ -31,6 +33,14 @@ import type { ActiveFactor, Reception } from './citta.ts'
 import { ChatTracker, contactFromTurn } from './conversation.ts'
 import { CHECKPOINT_FACTORS } from './events.ts'
 import type { CittaChangeMeta } from './events.ts'
+import {
+  CITTA_PROJECTION_KEY,
+  CITTA_PROJECTION_VERSION,
+  cittaProjectionSchema,
+  EMPTY_PROJECTION,
+  foldCittaChange,
+} from './projection.ts'
+import type { CittaProjection } from './projection.ts'
 import { contactFromTool } from './observe.ts'
 import { renderSelfReport, renderStateLines } from './prompt.ts'
 import { MAX_TURNINGS, assertDomainName, defineAlayaDomain } from './spec.ts'
@@ -95,6 +105,16 @@ export {
 } from './conversation.ts'
 export type { ChatAct, ChatTurn } from './conversation.ts'
 export { CHECKPOINT_FACTORS } from './events.ts'
+export {
+  CITTA_PROJECTION_KEY,
+  CITTA_PROJECTION_VERSION,
+  cittaChangeSchema,
+  cittaProjectionSchema,
+  EMPTY_PROJECTION,
+  foldCittaChange,
+  PROJECTION_HISTORY,
+} from './projection.ts'
+export type { CittaProjection } from './projection.ts'
 export type { CittaChangeFactor, CittaChangeMeta } from './events.ts'
 export { contactFromTool, gateFor, normalizeSubject, subjectOf } from './observe.ts'
 export { SELF_GUIDANCE, relativeTime, renderSelfReport, renderStateLines } from './prompt.ts'
@@ -274,6 +294,20 @@ export class CittaService extends Service {
     const stored = domain.global.get()
     this.citta = stored.citta
     this.turnings = [...stored.turnings]
+
+    // The projection is what the browser panel reads. It activates only where
+    // a projection registry is composed, so a headless deployment is untouched.
+    this.ctx.inject(['sessionProjections'], projectionCtx => {
+      projectionCtx.sessionProjections.register<'citta', CittaProjection>({
+        key: CITTA_PROJECTION_KEY,
+        schema: cittaProjectionSchema,
+        init: () => EMPTY_PROJECTION,
+        apply: (state, event) =>
+          event.type === 'citta/change' ? foldCittaChange(state, event.data) : state,
+        view: state => state,
+        stateVersion: CITTA_PROJECTION_VERSION,
+      })
+    })
 
     if (this.config.promptSection) {
       this.ctx.inject(['systemPrompt'], promptCtx => {

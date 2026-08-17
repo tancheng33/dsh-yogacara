@@ -436,3 +436,69 @@ describe('the durable record of the mind moving', () => {
     expect(ctx.citta.state().contacts).toBe(1)
   })
 })
+
+describe('the projection the browser panel reads', () => {
+  /** A projection registry stand-in. */
+  class FakeProjections {
+    readonly registered: {
+      key: string
+      stateVersion: number
+      init: () => unknown
+      apply: (state: unknown, event: unknown) => unknown
+      view: (state: unknown) => unknown
+      schema: { safeParse: (value: unknown) => { success: boolean } }
+    }[] = []
+
+    register(definition: unknown): () => void {
+      this.registered.push(definition as FakeProjections['registered'][number])
+      return () => undefined
+    }
+  }
+
+  /**
+   * Boot with a projection registry composed.
+   * @returns the context and the registry.
+   */
+  async function bootWithProjections() {
+    const ctx = new Context()
+    const projections = new FakeProjections()
+    ctx.provide('storageDomain', new FakeFacility())
+    ctx.provide('sessionProjections', projections)
+    await ctx.plugin(CittaService, {} as Config)
+    return { ctx, projections }
+  }
+
+  it('registers one `citta` projection when the seam is composed', async () => {
+    const { projections } = await bootWithProjections()
+    expect(projections.registered.map(entry => entry.key)).toEqual(['citta'])
+    expect(projections.registered[0]!.stateVersion).toBeGreaterThan(0)
+  })
+
+  it('stays absent in a deployment with no projection registry', async () => {
+    // boot() composes no sessionProjections; the plugin must still mount.
+    const { ctx } = await boot()
+    expect(ctx.citta).toBeInstanceOf(CittaService)
+  })
+
+  it('folds a citta/change event and ignores everything else', async () => {
+    const { projections } = await bootWithProjections()
+    const definition = projections.registered[0]!
+    const start = definition.init()
+    const unrelated = definition.apply(start, { type: 'turn/start', data: { turn: 1 } })
+    expect(unrelated).toBe(start)
+
+    const folded = definition.apply(start, {
+      type: 'citta/change',
+      data: {
+        kind: 'citta/change', version: 1, situation: 'chat:rebuke', gate: 'ear',
+        outcome: 'adverse', surprise: 1, expected: { valence: 0, confidence: 0 },
+        feeling: { id: 'daurmanasya', valence: -0.52, arousal: 0.65 },
+        factors: [{ id: 'hri', activation: 0.5 }],
+        manas: { atmaMoha: 0, atmaDrsti: 0, atmaMana: 0, atmaSneha: 0 },
+        seedCount: 1, at: Date.now(),
+      },
+    }) as { current: { situation: string } | null }
+    expect(folded.current?.situation).toBe('chat:rebuke')
+    expect(definition.schema.safeParse(definition.view(folded)).success).toBe(true)
+  })
+})

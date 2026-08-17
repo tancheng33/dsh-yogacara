@@ -6,7 +6,7 @@ import { defineConfig } from 'tsdown'
  * no monorepo checkout is present.
  */
 export default defineConfig({
-  entry: ['src/index.ts', 'src/citta.ts', 'src/caitasika.ts', 'src/conversation.ts'],
+  entry: ['src/index.ts', 'src/citta.ts', 'src/caitasika.ts', 'src/conversation.ts', 'src/projection.ts'],
   outDir: 'lib',
   format: 'esm',
   platform: 'node',
