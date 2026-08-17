@@ -175,7 +175,10 @@ pnpm test        # 86 个测试：纯核心、心所表、事件映射，
                  # 以及把插件真正装进 Cordis Context 跑一遍
 pnpm typecheck
 pnpm build
+pnpm simulate    # 把一段对话喂进去，看它怎么感觉
 ```
+
+`pnpm simulate` 是跟这些权重较劲最快的方式：它把整条链路——触、预期、受、心所、熏习、回忆——在一段脚本对话上跑一遍，逐轮打印会进提示词的内容，不需要模型也不需要 API key。加 `--report` 看仪表盘版，`--script your.json` 换成你自己的对话。
 
 心所表是结构化校验的：恰好 51 个，每一组是它经典的数目，每个烦恼都带着一个"可修"的对治（善心所或别境心所）。插件测试会在真实 Cordis Context 里用内存替身启动 `CittaService`，所以工具注册、提示词 section、自动观测、持久化与拆卸都是跑出来的，不是假设出来的。
 

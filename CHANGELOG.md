@@ -5,6 +5,7 @@
 ### Added
 
 - **`awareness`: the state can now reach the agent as inclination rather than instrumentation.** An agent handed `restlessness: 0.62` learns to narrate the gauge; a person finds themselves wanting to be done with something. In the new default `felt` mode the state arrives as a first-person leaning with no numbers, no factor names, and no diagnosis. `report` keeps the old instrument panel for tuning and auditing; `silent` puts nothing in the prompt. Nothing is concealed in any mode — `self_reflect` still returns every reading on request.
+- **`pnpm simulate`**: replay a scripted conversation through the real appraisal core and watch what the agent would see each turn — no model, no harness, no API key. The weights here are guesses, and this is how you argue with one.
 - **Mood-congruent recall.** What the store surfaces is weighted by how things currently feel, so when it is going badly the times it went badly come to mind more readily. This one conditions behaviour with no words at all, and works even under `silent`.
 
 - **A durable `citta/change` checkpoint per contact.** The mind's state was live-only: it moved, it shaped the prompt, and it left no trace anyone could read afterwards. Each contact now appends one whole-value checkpoint to the session log — feeling, top factors, self-grasping, expectation violation, and the seed's count and lesson — so a UI can render the state at any point without replaying the log, and a reader months later sees what the agent's state actually was when it said what it said.

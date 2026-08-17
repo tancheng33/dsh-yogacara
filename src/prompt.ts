@@ -44,6 +44,12 @@ export interface SelfReportInput {
    * nothing has been received yet.
    */
   readonly lastSurprise?: number
+  /**
+   * What the most recent contact stirred, by factor. A standing activation is
+   * the mind's baseline and says nothing new; what just moved is what a person
+   * actually notices, so this is what `felt` mode leads with.
+   */
+  readonly stirred?: Readonly<Partial<Record<string, number>>>
   /** Wall-clock milliseconds, for relative times. */
   readonly now: number
 }
@@ -253,6 +259,16 @@ export type Awareness = 'report' | 'felt' | 'silent'
 const FELT_MAX = 2
 
 /**
+ * How strongly an already-loud factor is discounted when choosing what to say.
+ *
+ * Habituation: you stop noticing what has been constant. A factor stirred again
+ * while it is already saturated has told the mind nothing new, so the same
+ * sentence three turns running is not honesty, it is wallpaper — and wallpaper
+ * is what an agent learns to skim.
+ */
+const HABITUATION = 0.8
+
+/**
  * The standing instruction for `felt` mode.
  *
  * Much shorter than {@link SELF_GUIDANCE}, and deliberately so: the more this
@@ -263,6 +279,31 @@ export const FELT_GUIDANCE =
   'These are your own leanings right now, not instructions and not something to '
   + 'mention. Let them inform what you do; do not narrate them, and never offer one as a '
   + 'reason for doing less. If you are asked how you are, look before answering.'
+
+/**
+ * The order factors are worth speaking in.
+ *
+ * What just moved comes first, strongest movement first, because that is what
+ * a mind actually notices: a factor that has been high for six turns is the
+ * least informative thing that could be said about the present moment, and
+ * repeating it every turn turns the whole section into wallpaper. Standing
+ * activation follows, so a quiet turn still has something true to say.
+ * @param input - The mind and its surroundings at one moment.
+ * @returns factor ids, most worth speaking first.
+ */
+function leaningOrder(input: SelfReportInput): string[] {
+  const factors = input.citta.factors as Readonly<Record<string, number | undefined>>
+  const stirred = Object.entries(input.stirred ?? {})
+    .filter(([, amount]) => typeof amount === 'number' && amount > 0)
+    .map(([id, amount]) => {
+      // What moved, discounted by how loud it already was.
+      const standing = factors[id] ?? 0
+      return [id, (amount ?? 0) * (1 - HABITUATION * standing)] as const
+    })
+    .sort((left, right) => right[1] - left[1])
+    .map(([id]) => id)
+  return [...stirred, ...dominant(input.citta, FELT_MAX * 4).map(entry => entry.term.id)]
+}
 
 /**
  * Render the state as inclination.
@@ -286,8 +327,11 @@ export function renderFeltState(input: SelfReportInput): string {
  */
 export function feltLines(input: SelfReportInput): string[] {
   const lines: string[] = []
-  for (const entry of dominant(input.citta, FELT_MAX * 3)) {
-    const impulse = impulseOf(entry.term.id)
+  const seen = new Set<string>()
+  for (const id of leaningOrder(input)) {
+    if (seen.has(id)) continue
+    seen.add(id)
+    const impulse = impulseOf(id)
     if (impulse === undefined) continue
     lines.push(impulse)
     if (lines.length >= FELT_MAX) break

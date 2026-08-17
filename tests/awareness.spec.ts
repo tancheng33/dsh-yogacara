@@ -125,3 +125,42 @@ describe('mood-congruent recall', () => {
     expect(found[0]!.seed.situation).toBe('chat:warmth')
   })
 })
+
+describe('what a mind actually notices', () => {
+  const standing: CittaState = {
+    ...freshMind(T0),
+    // 惭 has been loud for a while; 疑 has not.
+    factors: { hri: 0.85, vicikitsa: 0.05 },
+    feeling: { id: 'daurmanasya', valence: -0.4, arousal: 0.5 },
+  }
+
+  it('leads with what just moved, not with the loudest standing factor', () => {
+    const lines = feltLines(input({
+      citta: standing,
+      stirred: { vicikitsa: 0.4 },
+    }))
+    expect(lines[0]).toBe(IMPULSES.vicikitsa)
+  })
+
+  it('discounts a factor that was already saturated when it was stirred again', () => {
+    // 惭 is stirred harder in absolute terms, but it has nothing new to say.
+    const lines = feltLines(input({
+      citta: standing,
+      stirred: { hri: 0.5, vicikitsa: 0.3 },
+    }))
+    expect(lines[0]).toBe(IMPULSES.vicikitsa)
+  })
+
+  it('still speaks a strongly stirred factor that was genuinely quiet', () => {
+    const lines = feltLines(input({
+      citta: { ...standing, factors: { hri: 0.1 } },
+      stirred: { hri: 0.5, vicikitsa: 0.2 },
+    }))
+    expect(lines[0]).toBe(IMPULSES.hri)
+  })
+
+  it('falls back to standing activation on a turn that stirred nothing', () => {
+    const lines = feltLines(input({ citta: standing }))
+    expect(lines[0]).toBe(IMPULSES.hri)
+  })
+})

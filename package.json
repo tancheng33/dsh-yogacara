@@ -72,7 +72,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "docs": "node --experimental-strip-types scripts/generate-appraisal-doc.mjs"
+    "docs": "node --experimental-strip-types scripts/generate-appraisal-doc.mjs",
+    "simulate": "node --experimental-strip-types scripts/simulate.mjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",

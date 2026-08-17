@@ -177,7 +177,10 @@ pnpm test        # 86 tests: the pure core, the catalogue, the event mapping,
                  # and the plugin loaded into a real Cordis context
 pnpm typecheck
 pnpm build
+pnpm simulate    # replay a conversation through the core and watch it feel
 ```
+
+`pnpm simulate` is the fastest way to argue with the weights: it drives the whole loop — contact, expectation, feeling, factors, perfuming, recall — over a scripted conversation and prints what would reach the prompt at each turn, with no model and no API key. Pass `--report` to see the instrument panel instead, or `--script your.json` for your own exchange.
 
 The catalogue is checked structurally: exactly 51 factors, each classical group at its classical size, every affliction carrying an antidote that is itself something a mind can cultivate. The plugin test boots `CittaService` in a real Cordis context over in-memory stand-ins for the harness services, so tool registration, the prompt section, automatic observation, persistence, and teardown are exercised rather than assumed.
 

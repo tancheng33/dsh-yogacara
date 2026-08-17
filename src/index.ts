@@ -256,6 +256,8 @@ export class CittaService extends Service {
   private lastSituation?: string
   /** Expectation violation of the last contact, reported alongside the feeling. */
   private lastSurprise?: number
+  /** What the last contact stirred; `felt` mode leads with what just moved. */
+  private lastStirred?: Readonly<Partial<Record<string, number>>>
   /** One tracker per live conversation; a turn only means something in context. */
   private readonly conversations = new Map<SessionId, ChatTracker>()
   private flushTimer?: ReturnType<typeof setTimeout>
@@ -456,6 +458,7 @@ export class CittaService extends Service {
     this.seeds.set(reception.seed.situation, reception.seed)
     this.lastSituation = reception.seed.situation
     this.lastSurprise = reception.impulse.surprise
+    this.lastStirred = reception.impulse.factors
 
     const table = this.table
     if (this.writable && table !== undefined) {
@@ -634,6 +637,7 @@ export class CittaService extends Service {
       maxFactors: this.config.promptMaxFactors,
       manasWarning: this.config.manasWarning,
       ...(this.lastSurprise === undefined ? {} : { lastSurprise: this.lastSurprise }),
+      ...(this.lastStirred === undefined ? {} : { stirred: this.lastStirred }),
       // Scaled off the factor half-life so a deployment that tunes how long a
       // mood lasts also tunes how long a commitment stays on the prompt.
       turningMaxAgeMs: this.tuning.halfLifeMs * TURNING_VISIBLE_HALF_LIVES,
