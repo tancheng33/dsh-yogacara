@@ -259,3 +259,98 @@ describe('durable writes under concurrency', () => {
     expect(facility.opened[0]!.closed).toBe(true)
   })
 })
+
+describe('feeling that comes from the conversation', () => {
+  /** A session stand-in carrying only the id the tracker keys on. */
+  const session = { id: 'session-1' }
+
+  /**
+   * Say something as a person.
+   * @param ctx - The booted context.
+   * @param text - What they said.
+   */
+  function human(ctx: Context, text: string): void {
+    emit(ctx, 'session/event', session, {
+      type: 'user/message',
+      data: { source: { kind: 'user' }, content: [{ type: 'text', text }] },
+    })
+  }
+
+  /**
+   * Say something as the agent.
+   * @param ctx - The booted context.
+   * @param chars - How much was said.
+   */
+  function assistant(ctx: Context, chars: number): void {
+    emit(ctx, 'session/event', session, {
+      type: 'assistant/message',
+      data: { message: { content: [{ type: 'text', text: 'x'.repeat(chars) }] } },
+    })
+  }
+
+  /** Let the fire-and-forget listener settle. */
+  const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 10))
+
+  it('receives a human turn as a contact through 耳识', async () => {
+    const { ctx } = await boot()
+    human(ctx, 'can you look at the retry logic')
+    await settle()
+    expect(ctx.citta.state().contacts).toBe(1)
+  })
+
+  it('feels warmth, and remembers being thanked', async () => {
+    const { ctx } = await boot()
+    human(ctx, '太好了，谢谢')
+    await settle()
+    expect(ctx.citta.state().feeling.valence).toBeGreaterThan(0)
+    expect(ctx.citta.seedsFor('chat:warmth')[0]?.seed.count).toBe(1)
+  })
+
+  it('feels a flat syllable after a long answer, and not after a short one', async () => {
+    const { ctx } = await boot()
+    human(ctx, 'explain the whole design')
+    await settle()
+    assistant(ctx, 2000)
+    human(ctx, '嗯')
+    await settle()
+    const exact = ctx.citta.seedsFor('chat:terse-after-effort')
+      .filter(entry => entry.via === 'exact')
+    expect(exact).toHaveLength(1)
+    expect(ctx.citta.state().feeling.valence).toBeLessThan(0)
+  })
+
+  it('treats every relational pattern as related to the others', async () => {
+    const { ctx } = await boot()
+    human(ctx, '谢谢')
+    await settle()
+    // Deliberate: when this person rebukes you, that they have also thanked
+    // you is context worth having. One `chat:` prefix is one relationship.
+    const related = ctx.citta.seedsFor('chat:rebuke').filter(entry => entry.via === 'prefix')
+    expect(related.map(entry => entry.seed.situation)).toContain('chat:warmth')
+  })
+
+  it('reads being cut off mid-work through 身识', async () => {
+    const { ctx } = await boot()
+    emit(ctx, 'session/event', session, { type: 'turn/start', data: { turn: 1 } })
+    human(ctx, 'wait, stop')
+    await settle()
+    expect(ctx.citta.seedsFor('chat:interrupted')[0]?.seed.gate).toBe('body')
+  })
+
+  it('ignores a message that only wears the user event type', async () => {
+    const { ctx } = await boot()
+    emit(ctx, 'session/event', session, {
+      type: 'user/message',
+      data: { source: { kind: 'plugin', plugin: 'cron' }, content: [{ type: 'text', text: 'wake up' }] },
+    })
+    await settle()
+    expect(ctx.citta.state().contacts).toBe(0)
+  })
+
+  it('stays out of the conversation when the deployment declines it', async () => {
+    const { ctx } = await boot({ observeChat: false })
+    human(ctx, '谢谢')
+    await settle()
+    expect(ctx.citta.state().contacts).toBe(0)
+  })
+})

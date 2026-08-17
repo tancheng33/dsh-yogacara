@@ -39,6 +39,18 @@ The five sense consciousnesses become the five channels an agent actually percei
 
 `bash: pytest -q` reaches through 舌识 and `bash: git status` through 身识, because tasting your own product and pushing against the world are not the same kind of perception — and the mind that receives them should not move the same way.
 
+## Where the feeling comes from
+
+Two sources, and the first is the one that matters for an agent that talks to people.
+
+**The conversation** ([`src/conversation.ts`](src/conversation.ts)). What lands in a conversation is relational: being interrupted mid-thought, being answered with one flat syllable after a long careful reply, being asked the same thing a third time, being thanked, coming back to someone after two days of silence. The plugin reads the *shape* of the exchange — timing, length, repetition — plus a deliberately crude lexicon for thanks and rebukes. Every one of these arrives through 耳识 except an interruption, which is 身识: the world reaching in and stopping the hand mid-motion, which is how it is felt.
+
+Seeds here are keyed by relational pattern, not topic — `chat:terse-after-effort`, `chat:asked-again`, `chat:warmth`. What accumulates over a long acquaintance is "this person goes quiet when I over-explain", not "we discussed migrations". One `chat:` prefix is one relationship, so a rebuke surfaces the history of warmth alongside it.
+
+**Tool results** ([`src/observe.ts`](src/observe.ts)), for an agent that works as well as talks. Set `observeTools: false` for one that only talks.
+
+Neither source can read what a sentence MEANT — only the model that read it knows that, and it says so through `self_appraise`, which outranks everything derived structurally.
+
 ## The loop
 
 **触 → 受 → 心所.** Every tool result is a moment of contact. It carries one of the five feelings (乐 苦 喜 忧 舍) and stirs mental factors, scaled by intensity. Factors decay with a half-life measured in minutes: momentariness is load-bearing, and an agent that carries irritation from the failing test into an unrelated task is modelling a grudge rather than a mind.

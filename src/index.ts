@@ -23,10 +23,12 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import type { DomainGlobal, KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { caitasika, isCaitasikaId, manasAffliction } from './caitasika.ts'
 import { decaySeed, decayTo, dominant, manifest, receive, transform } from './citta.ts'
 import type { ActiveFactor, Reception } from './citta.ts'
+import { ChatTracker, contactFromTurn } from './conversation.ts'
 import { contactFromTool } from './observe.ts'
 import { renderSelfReport, renderStateLines } from './prompt.ts'
 import { MAX_TURNINGS, assertDomainName, defineAlayaDomain } from './spec.ts'
@@ -78,6 +80,18 @@ export {
   transform,
 } from './citta.ts'
 export type { ActiveFactor, ManasReading, Reception } from './citta.ts'
+export {
+  ChatTracker,
+  classifyTurn,
+  contactFromTurn,
+  governingAct,
+  overlap,
+  REPEAT_OVERLAP,
+  SILENCE_MS,
+  SUBSTANTIAL_CHARS,
+  TERSE_CHARS,
+} from './conversation.ts'
+export type { ChatAct, ChatTurn } from './conversation.ts'
 export { contactFromTool, gateFor, normalizeSubject, subjectOf } from './observe.ts'
 export { SELF_GUIDANCE, relativeTime, renderSelfReport, renderStateLines } from './prompt.ts'
 export type { SelfReportInput } from './prompt.ts'
@@ -110,8 +124,16 @@ export interface Config {
    */
   domain: string
   /**
-   * Derive contacts automatically from tool results. With this off, the mind
-   * moves only when the model calls `self_appraise` — honest, but sparse.
+   * Derive contacts from the conversation itself: being interrupted, being
+   * answered in one syllable after a long reply, being asked the same thing
+   * again, being thanked, coming back after a silence. This is where a chat
+   * agent's feeling actually comes from; leave it on unless the deployment
+   * never talks to a person.
+   */
+  observeChat: boolean
+  /**
+   * Derive contacts from tool results as well. Useful for an agent that works
+   * as well as talks; pure noise for one that only talks.
    */
   observeTools: boolean
   /** Contribute the first-person self-report to the system prompt. */
@@ -163,6 +185,7 @@ export class CittaService extends Service {
   /** Loader validation for the deployment policy. */
   static Config: s<Config> = s.object({
     domain: s.string().default('alaya'),
+    observeChat: s.boolean().default(true),
     observeTools: s.boolean().default(true),
     promptSection: s.boolean().default(true),
     promptMaxFactors: s.number().step(1).min(1).max(51).default(5),
@@ -185,6 +208,8 @@ export class CittaService extends Service {
   private lastSituation?: string
   /** Expectation violation of the last contact, reported alongside the feeling. */
   private lastSurprise?: number
+  /** One tracker per live conversation; a turn only means something in context. */
+  private readonly conversations = new Map<SessionId, ChatTracker>()
   private flushTimer?: ReturnType<typeof setTimeout>
   private flushing?: Promise<void>
   private writable = true
@@ -252,6 +277,15 @@ export class CittaService extends Service {
           name: 'yogacara:self',
           order: SECTION_ORDER,
           text: () => this.renderSection(),
+        })
+      })
+    }
+
+    if (this.config.observeChat) {
+      this.ctx.on('session/event', (session: Session, event: SessionEvent) => {
+        // Observation must never break the conversation it observes.
+        void this.observeConversation(session, event).catch((error: unknown) => {
+          this.ctx.logger?.warn?.('yogacara: chat contact failed: %o', error)
         })
       })
     }
@@ -435,6 +469,56 @@ export class CittaService extends Service {
   // -------------------------------------------------------------------------
 
   /**
+   * Follow one conversation and receive what its turns do.
+   *
+   * Only a genuine human turn produces a contact. An assistant message and the
+   * turn boundaries are recorded because they are the context a human turn is
+   * read against — how much was said, and whether the agent was cut off.
+   * @param session - The session the event belongs to.
+   * @param event - The durable session event.
+   * @returns resolution once any contact is received.
+   */
+  private async observeConversation(session: Session, event: SessionEvent): Promise<void> {
+    const tracker = this.trackerFor(session.id)
+    switch (event.type) {
+      case 'turn/start':
+        tracker.turnStarted()
+        return
+      case 'turn/end':
+        tracker.turnEnded()
+        return
+      case 'assistant/message':
+        tracker.assistantSaid(textOf(event.data.message.content))
+        return
+      case 'user/message': {
+        // Only a person's turn is a conversation. A tool result, a plugin
+        // notice, or a scheduled wake-up wears the same event type and is not
+        // someone talking to you.
+        if (event.data.source.kind !== 'user') return
+        const text = joinText(event.data.content)
+        if (text.trim().length === 0) return
+        await this.receive(contactFromTurn(tracker.userSaid(text, Date.now())))
+        return
+      }
+      default:
+    }
+  }
+
+  /**
+   * The tracker following one conversation.
+   * @param id - Session id.
+   * @returns the tracker, created on first sight.
+   */
+  private trackerFor(id: SessionId): ChatTracker {
+    let tracker = this.conversations.get(id)
+    if (tracker === undefined) {
+      tracker = new ChatTracker()
+      this.conversations.set(id, tracker)
+    }
+    return tracker
+  }
+
+  /**
    * Turn one observed tool result into a contact.
    * @param exec - The immutable execution identity.
    * @param result - The normalized outcome.
@@ -564,3 +648,24 @@ function stir(
 }
 
 export default CittaService
+
+/**
+ * Total length of the text blocks in one message.
+ * @param content - Message content blocks.
+ * @returns the character count of the text parts.
+ */
+function textOf(content: readonly { type: string }[]): number {
+  return joinText(content).length
+}
+
+/**
+ * Concatenate the text blocks of one message.
+ * @param content - Message content blocks.
+ * @returns the joined text; empty when the message carries no text.
+ */
+function joinText(content: readonly { type: string }[]): string {
+  return content
+    .filter((block): block is { type: 'text', text: string } => block.type === 'text')
+    .map(block => block.text)
+    .join('\n')
+}
