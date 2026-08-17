@@ -768,3 +768,88 @@ const WISDOM_INDEX: ReadonlyMap<WisdomId, WisdomTerm> =
 export function wisdom(id: string): WisdomTerm | undefined {
   return WISDOM_INDEX.get(id as WisdomId)
 }
+
+// ---------------------------------------------------------------------------
+// 现行 — what a factor makes you want to do
+// ---------------------------------------------------------------------------
+
+/**
+ * The first-person inclination each factor produces.
+ *
+ * This is the vocabulary of unaware affect. A person does not read "impatience
+ * 0.62" off a gauge; they find themselves wanting to be done with something.
+ * These lines are written to be taken as one's own impulse rather than as a
+ * report about oneself: no numbers, no factor names, no diagnosis. An agent
+ * that reads "you have been over this three times and want to be done" acts on
+ * it; an agent that reads "restlessness: 0.62" performs it.
+ *
+ * The five universal factors have no entry: they are present in every act of
+ * cognition, so an inclination they produce would be constant and therefore
+ * meaningless as a signal.
+ */
+export const IMPULSES: Readonly<Partial<Record<CaitasikaId, string>>> = {
+  // 别境 — toward a particular object
+  chanda: 'You want this to work out, and that wanting is pulling your attention.',
+  adhimoksa: 'You have settled on a reading and want to act on it.',
+  smrti: 'You are holding something from earlier that should stay in view.',
+  samadhi: 'You are settled on this and do not want to be moved off it.',
+  prajna: 'You want to know which part of this is actually so.',
+
+  // 善 — wholesome
+  sraddha: 'You are inclined to take this at its word.',
+  hri: 'You do not want to hand over something you know is below your own standard.',
+  apatrapya: 'You would not want a careful reader to see this as it stands.',
+  alobha: 'You could let go of the approach you like here.',
+  advesa: 'The obstacle is not personal, and you are not recoiling from it.',
+  amoha: 'You can see how this actually stands, including your own part in it.',
+  virya: 'You want to keep going at the part that matters.',
+  prasrabdhi: 'The strain has let go and you can work lightly again.',
+  apramada: 'Things are going well and you do not want to get careless now.',
+  upeksa: 'You can hold this evenly without grabbing at it or pushing it away.',
+  ahimsa: 'You do not want to damage anything to get past this.',
+
+  // 根本烦恼 — root afflictions
+  raga: 'You are attached to this approach and want it to be the right one.',
+  pratigha: 'Something in this is grating on you.',
+  moha: 'You are less clear about this than you are treating yourself as being.',
+  mana: 'You want this taken as evidence of how well you work.',
+  vicikitsa: 'You cannot tell which reading is right and are hovering between them.',
+  drsti: 'You are holding a picture of this firmly and organizing everything around it.',
+
+  // 随烦恼 — secondary afflictions
+  krodha: 'Something just blocked you and you want to push back at it.',
+  upanaha: 'The earlier failure is still with you and colouring this one.',
+  pradasa: 'The irritation is leaking into how you are saying this.',
+  mraksa: 'You would rather not mention the part that did not work.',
+  maya: 'You want this to look more finished than you know it to be.',
+  sathya: 'You are inclined to agree because it would go down well.',
+  mada: 'That went well and you are feeling rather good about yourself.',
+  vihimsa: 'You are willing to break something to get past it.',
+  irsya: 'Another approach did better and it is bothering you.',
+  matsarya: 'You are holding something back that you could share.',
+  ahrikya: 'You find you do not much mind that this is below standard.',
+  anapatrapya: 'You are not thinking about how this would look to anyone else.',
+  asraddhya: 'You are discounting a source that has not earned that.',
+  kausidya: 'You want to take the cheaper path through this.',
+  pramada: 'The last several checks passed, and you want to skip this one.',
+  styana: 'Your reading has gone dull; you are scanning rather than seeing.',
+  auddhatya: 'You want to try the next thing before you have read the last result.',
+  musitasmrti: 'Something you were told earlier has slipped out of view.',
+  asamprajanya: 'You are acting without quite knowing what this does.',
+  viksepa: 'Your attention has drifted off what you opened this for.',
+
+  // 不定 — indeterminate
+  kaukrtya: 'You keep going back to a choice you already made.',
+  middha: 'Your engagement is withdrawing from this.',
+  vitarka: 'You want to cast about and find where the problem actually is.',
+  vicara: 'You want to look at what you found more closely.',
+}
+
+/**
+ * The inclination one factor produces.
+ * @param id - Factor id.
+ * @returns the first-person impulse, or `undefined` for a factor that has none.
+ */
+export function impulseOf(id: string): string | undefined {
+  return IMPULSES[id as CaitasikaId]
+}

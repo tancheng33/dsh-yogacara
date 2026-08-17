@@ -42,7 +42,8 @@ import {
 } from './projection.ts'
 import type { CittaProjection } from './projection.ts'
 import { contactFromTool } from './observe.ts'
-import { renderSelfReport, renderStateLines } from './prompt.ts'
+import { renderFeltState, renderSelfReport, renderStateLines } from './prompt.ts'
+import type { Awareness } from './prompt.ts'
 import { MAX_TURNINGS, assertDomainName, defineAlayaDomain } from './spec.ts'
 import type { AlayaGlobal } from './spec.ts'
 import { DEFAULT_TUNING } from './types.ts'
@@ -117,8 +118,16 @@ export {
 export type { CittaProjection } from './projection.ts'
 export type { CittaChangeFactor, CittaChangeMeta } from './events.ts'
 export { contactFromTool, gateFor, normalizeSubject, subjectOf } from './observe.ts'
-export { SELF_GUIDANCE, relativeTime, renderSelfReport, renderStateLines } from './prompt.ts'
-export type { SelfReportInput } from './prompt.ts'
+export {
+  FELT_GUIDANCE,
+  feltLines,
+  relativeTime,
+  renderFeltState,
+  renderSelfReport,
+  renderStateLines,
+  SELF_GUIDANCE,
+} from './prompt.ts'
+export type { Awareness, SelfReportInput } from './prompt.ts'
 export {
   alayaDomainSpec,
   assertDomainName,
@@ -160,8 +169,22 @@ export interface Config {
    * as well as talks; pure noise for one that only talks.
    */
   observeTools: boolean
-  /** Contribute the first-person self-report to the system prompt. */
+  /** Contribute the agent's state to the system prompt. */
   promptSection: boolean
+  /**
+   * How the state reaches the agent.
+   *
+   * `felt` (the default) gives it as first-person inclination — what it finds
+   * itself wanting to do — with no numbers and no factor names, because an
+   * agent handed a gauge learns to narrate the gauge rather than be moved by
+   * it. `report` gives the full instrument panel, which is what you want while
+   * tuning or auditing. `silent` puts nothing in the prompt, leaving only
+   * mood-congruent recall, which needs no words.
+   *
+   * Nothing is concealed in any mode: `self_reflect` returns every reading on
+   * request, the way a person can introspect by stopping to look.
+   */
+  awareness: Awareness
   /** Upper bound on factors listed in the self-report. */
   promptMaxFactors: number
   /** Self-grasping at or above this renders as a warning with its counter-move. */
@@ -212,6 +235,7 @@ export class CittaService extends Service {
     observeChat: s.boolean().default(true),
     observeTools: s.boolean().default(true),
     promptSection: s.boolean().default(true),
+    awareness: s.union(['report', 'felt', 'silent'] as const).default('felt') as unknown as s<Awareness>,
     promptMaxFactors: s.number().step(1).min(1).max(51).default(5),
     manasWarning: s.number().min(0).max(1).default(0.5),
     halfLifeMs: s.number().step(1).min(1000).default(DEFAULT_TUNING.halfLifeMs),
@@ -377,7 +401,9 @@ export class CittaService extends Service {
    * @returns the manifesting seeds, strongest first.
    */
   seedsFor(situation: string, now: number = Date.now(), limit = 3): Manifestation[] {
-    return manifest(this.seeds, situation, now, limit, this.tuning)
+    // What comes to mind is coloured by how things feel. This is the one
+    // mechanism that conditions the agent without telling it anything.
+    return manifest(this.seeds, situation, now, limit, this.tuning, this.state(now).feeling.valence)
   }
 
   /**
@@ -587,7 +613,11 @@ export class CittaService extends Service {
    * @returns the rendered section, or an empty string when the mind is quiet.
    */
   private renderSection(): string {
-    return renderSelfReport(this.reportInput(this.lastSituation, Date.now()))
+    if (this.config.awareness === 'silent') return ''
+    const input = this.reportInput(this.lastSituation, Date.now())
+    return this.config.awareness === 'report'
+      ? renderSelfReport(input)
+      : renderFeltState(input)
   }
 
   /**

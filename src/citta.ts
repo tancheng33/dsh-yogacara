@@ -77,6 +77,17 @@ export const HIGH_SURPRISE = 0.6
 /** Surprise at or below this means the store called it. */
 export const LOW_SURPRISE = 0.25
 
+/**
+ * How strongly the current feeling biases what the store surfaces.
+ *
+ * Mood-congruent recall: when things feel bad, the times they went badly come
+ * to mind more readily, and the times they went well are harder to reach. This
+ * is the most honest of the unaware mechanisms — nothing is announced, the
+ * agent simply finds different precedents at hand depending on how it feels,
+ * exactly as a person does.
+ */
+export const MOOD_CONGRUENCE = 0.6
+
 // ---------------------------------------------------------------------------
 // Numeric helpers
 // ---------------------------------------------------------------------------
@@ -625,6 +636,7 @@ export function manifest(
   now: number,
   limit = 3,
   tuning: CittaTuning = DEFAULT_TUNING,
+  mood = 0,
 ): Manifestation[] {
   const separator = situation.indexOf(':')
   const prefix = separator > 0 ? situation.slice(0, separator + 1) : undefined
@@ -633,7 +645,9 @@ export function manifest(
   for (const seed of seeds.values()) {
     const exact = seed.situation === situation
     if (!exact && (prefix === undefined || !seed.situation.startsWith(prefix))) continue
-    const current = decaySeed(seed, now, tuning).potency * (exact ? 1 : 0.5)
+    const current = decaySeed(seed, now, tuning).potency
+      * (exact ? 1 : 0.5)
+      * congruence(mood, seed.valence)
     if (current < tuning.floor) continue
     found.push({ seed, current, via: exact ? 'exact' : 'prefix' })
   }
@@ -650,6 +664,23 @@ export function manifest(
 export interface ActiveFactor {
   readonly term: CaitasikaTerm
   readonly activation: number
+}
+
+/**
+ * How much the current feeling favours one seed.
+ *
+ * A seed whose recorded tone agrees with the present mood surfaces more
+ * easily; one that disagrees is harder to reach. Bounded so that congruence
+ * biases recall without ever silencing a strong precedent outright — a mood
+ * should colour what comes to mind, not censor it.
+ * @param mood - Current hedonic tone in [-1, 1]; 0 disables the bias entirely.
+ * @param seedValence - The seed's recorded tone in [-1, 1].
+ * @returns a multiplier in [1 - MOOD_CONGRUENCE / 2, 1 + MOOD_CONGRUENCE / 2].
+ */
+export function congruence(mood: number, seedValence: number): number {
+  if (!Number.isFinite(mood) || mood === 0) return 1
+  const agreement = clamp(mood, -1, 1) * clamp(seedValence, -1, 1)
+  return 1 + (MOOD_CONGRUENCE / 2) * clamp(agreement, -1, 1)
 }
 
 /**

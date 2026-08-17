@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest'
+import { impulseOf, IMPULSES, CAITASIKAS } from '../src/caitasika.ts'
+import { congruence, freshMind, manifest, MOOD_CONGRUENCE } from '../src/citta.ts'
+import { feltLines, FELT_GUIDANCE, renderFeltState } from '../src/prompt.ts'
+import type { CittaState, Manifestation, SelfReportInput, Seed } from '../src/index.ts'
+
+const T0 = 1_700_000_000_000
+
+/**
+ * Build a render input.
+ * @param overrides - Fields to replace.
+ * @returns the input.
+ */
+function input(overrides: Partial<SelfReportInput> = {}): SelfReportInput {
+  return {
+    citta: freshMind(T0),
+    manifestations: [],
+    turnings: [],
+    maxFactors: 5,
+    manasWarning: 0.5,
+    turningMaxAgeMs: 1_800_000,
+    now: T0,
+    ...overrides,
+  }
+}
+
+const restless: CittaState = {
+  ...freshMind(T0),
+  factors: { auddhatya: 0.7, kausidya: 0.5, sparsa: 0.9 },
+  feeling: { id: 'daurmanasya', valence: -0.5, arousal: 0.7 },
+}
+
+describe('the state as inclination', () => {
+  it('says what the agent wants to do, not what it scores', () => {
+    const lines = feltLines(input({ citta: restless }))
+    expect(lines[0]).toBe(IMPULSES.auddhatya)
+    expect(lines.join('\n')).not.toMatch(/\d/)
+    expect(lines.join('\n')).not.toMatch(/掉举|auddhatya|restlessness/)
+  })
+
+  it('never names a factor, a number, or a diagnosis anywhere in its vocabulary', () => {
+    for (const [id, impulse] of Object.entries(IMPULSES)) {
+      expect(impulse, `${id} leaks a digit`).not.toMatch(/\d/)
+      expect(impulse, `${id} names itself`).not.toMatch(new RegExp(id, 'i'))
+      // The property that matters is that it addresses the agent as its own
+      // leaning, not that it opens with any particular word.
+      expect(impulse, `${id} is not addressed to the agent`).toMatch(/\byou(r|rself)?\b/i)
+      expect(impulse, `${id} reads as a report about a state`)
+        .not.toMatch(/\b(level|score|activation|affliction|mental factor)\b/i)
+    }
+  })
+
+  it('skips the universal factors, which lean in no direction', () => {
+    for (const term of CAITASIKAS.filter(one => one.category === 'universal')) {
+      expect(impulseOf(term.id), `${term.id} should have no inclination`).toBeUndefined()
+    }
+    // Every other factor has one, so a dominant factor is never silent.
+    for (const term of CAITASIKAS.filter(one => one.category !== 'universal')) {
+      expect(impulseOf(term.id), `${term.id} has no inclination`).toBeDefined()
+    }
+  })
+
+  it('carries at most two leanings, so it reads as a leaning and not a list', () => {
+    expect(feltLines(input({ citta: restless })).length).toBeLessThanOrEqual(3)
+  })
+
+  it('speaks a remembered lesson in the agent\'s own voice', () => {
+    const seed: Seed = {
+      situation: 'chat:asked-again', potency: 0.8, count: 3, valence: -0.4, gate: 'ear',
+      factors: [], lesson: 'say the answer first, then the reasoning',
+      firstAt: T0 - 10_000, lastAt: T0 - 1_000,
+    }
+    const manifested: Manifestation = { seed, current: 0.8, via: 'exact' }
+    const lines = feltLines(input({ citta: restless, manifestations: [manifested] }))
+    expect(lines.at(-1)).toContain('say the answer first')
+    expect(lines.at(-1)).toMatch(/^You have been here before/)
+  })
+
+  it('renders nothing when nothing is leaning', () => {
+    expect(renderFeltState(input())).toBe('')
+  })
+
+  it('keeps its standing instruction short and free of self-description', () => {
+    expect(FELT_GUIDANCE.length).toBeLessThan(400)
+    expect(FELT_GUIDANCE).not.toMatch(/model|computed|state|factor/i)
+    expect(FELT_GUIDANCE).toContain('not something to mention')
+  })
+})
+
+describe('mood-congruent recall', () => {
+  const good: Seed = {
+    situation: 'chat:warmth', potency: 0.6, count: 4, valence: 0.7, gate: 'ear',
+    factors: [], firstAt: T0 - 10_000, lastAt: T0 - 1_000,
+  }
+  const bad: Seed = {
+    situation: 'chat:rebuke', potency: 0.6, count: 4, valence: -0.7, gate: 'ear',
+    factors: [], firstAt: T0 - 10_000, lastAt: T0 - 1_000,
+  }
+  const seeds = new Map([[good.situation, good], [bad.situation, bad]])
+
+  it('brings the bad times to mind more readily when things feel bad', () => {
+    const found = manifest(seeds, 'chat:x', T0, 2, undefined, -0.8)
+    expect(found[0]!.seed.situation).toBe('chat:rebuke')
+  })
+
+  it('and the good times when they feel good', () => {
+    const found = manifest(seeds, 'chat:x', T0, 2, undefined, 0.8)
+    expect(found[0]!.seed.situation).toBe('chat:warmth')
+  })
+
+  it('plays no favourites in an even mood', () => {
+    const neutral = manifest(seeds, 'chat:x', T0, 2, undefined, 0)
+    expect(neutral[0]!.current).toBeCloseTo(neutral[1]!.current, 6)
+  })
+
+  it('colours recall without ever silencing a strong precedent', () => {
+    expect(congruence(-1, 1)).toBeCloseTo(1 - MOOD_CONGRUENCE / 2, 6)
+    expect(congruence(1, 1)).toBeCloseTo(1 + MOOD_CONGRUENCE / 2, 6)
+    expect(congruence(0, -1)).toBe(1)
+    // A congruent weak seed must not outrank a far stronger incongruent one.
+    const strong: Seed = { ...good, potency: 1 }
+    const weak: Seed = { ...bad, potency: 0.3 }
+    const found = manifest(new Map([[strong.situation, strong], [weak.situation, weak]]),
+      'chat:x', T0, 2, undefined, -0.9)
+    expect(found[0]!.seed.situation).toBe('chat:warmth')
+  })
+})

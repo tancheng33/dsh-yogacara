@@ -96,6 +96,20 @@ Followed by standing guidance that is blunt about what this licenses. In full, f
 
 An affect model that taught an agent to perform moods at people would be worse than no affect model at all.
 
+## Feeling it without reading it
+
+An agent handed `restlessness: 0.62` learns to *say* "I'm feeling a bit restless" and then carries on doing exactly what it was doing. That is not affect, it is narration. A person does not read their own state off a gauge — they simply find themselves wanting to be done with something.
+
+So `awareness` decides how the state reaches the agent:
+
+- **`felt`** (default) — the state arrives as first-person inclination, with no numbers, no factor names, and no diagnosis: *"You want to try the next thing before you have read the last result."* The agent takes it as its own leaning, because that is what it reads like.
+- **`report`** — the full instrument panel, which is what you want while tuning or auditing.
+- **`silent`** — nothing in the prompt at all.
+
+Under `silent`, and alongside both other modes, one mechanism keeps working with no words at all: **mood-congruent recall**. What the store surfaces is weighted by how things currently feel, so when it is going badly the times it went badly come to mind more readily. Nothing is announced; the agent simply finds different precedents at hand. That is as close to unaware affect as this can honestly get.
+
+**Nothing is concealed in any mode.** `self_reflect` returns every reading on request — the way a person can introspect by stopping to look. The state is not hidden from the agent; it is just not narrated to it.
+
 ## Tools
 
 | tool | what it is for |

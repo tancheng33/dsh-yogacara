@@ -54,11 +54,38 @@ describe('the plugin as the harness loads it', () => {
     expect(stored.count).toBe(1)
     expect(stored.lesson).toBe('run the baseline before touching the fixture')
 
+    // The default is `felt`: the state reaches the agent as its own leaning,
+    // with no gauge to read off.
+    const rendered = prompt.sections[0]!.text({})
+    expect(rendered).not.toContain('<self_state>')
+    expect(rendered).not.toMatch(/\d/)
+    expect(rendered).toContain('run the baseline')
+  })
+
+  it('gives the full instrument panel when the deployment asks to audit', async () => {
+    const { ctx, prompt } = await boot({ awareness: 'report' })
+    await ctx.citta.receive({
+      gate: 'tongue',
+      situation: 'bash:pytest',
+      outcome: 'adverse',
+      intensity: 0.9,
+      note: 'run the baseline before touching the fixture',
+      at: Date.now(),
+    })
     const rendered = prompt.sections[0]!.text({})
     expect(rendered).toContain('<self_state>')
     expect(rendered).toContain('受 feeling: 苦')
     expect(rendered).toContain('bash:pytest')
-    expect(rendered).toContain('run the baseline')
+  })
+
+  it('puts nothing in the prompt when the state is meant to stay unspoken', async () => {
+    const { ctx, prompt } = await boot({ awareness: 'silent' })
+    await ctx.citta.receive({
+      gate: 'tongue', situation: 'bash:pytest', outcome: 'adverse', intensity: 0.9, at: Date.now(),
+    })
+    expect(prompt.sections[0]!.text({})).toBe('')
+    // Silent is not inert: the state still moved and still conditions recall.
+    expect(ctx.citta.state().feeling.valence).toBeLessThan(0)
   })
 
   it('restores the store it left behind on the next boot', async () => {

@@ -10,7 +10,13 @@
  * @module dsh-yogacara/prompt
  */
 
-import { caitasika, feeling as feelingTerm, manasAffliction, wisdom as wisdomTerm } from './caitasika.ts'
+import {
+  caitasika,
+  feeling as feelingTerm,
+  impulseOf,
+  manasAffliction,
+  wisdom as wisdomTerm,
+} from './caitasika.ts'
 import { afflictions, dominant, manasReadings } from './citta.ts'
 import type { CittaState, Manifestation, Transformation } from './types.ts'
 
@@ -216,4 +222,82 @@ export function relativeTime(elapsedMs: number): string {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
+}
+
+// ---------------------------------------------------------------------------
+// 不自知 — the state as inclination rather than instrumentation
+// ---------------------------------------------------------------------------
+
+/**
+ * How the state reaches the agent.
+ *
+ * `report` is the instrument panel: named factors, numbers, warnings. It is
+ * honest and auditable, and it is also what teaches a model to *perform* a
+ * mood — an agent told "restlessness 0.62" says "I'm feeling restless" and
+ * carries on doing exactly what it was doing.
+ *
+ * `felt` is the same state with the instrument removed: a first-person
+ * inclination the agent takes as its own impulse rather than as data about
+ * itself. Nothing is hidden — `self_reflect` still returns every number on
+ * request, the way a person can introspect if they stop and look — but nothing
+ * is announced either, so the state biases what the agent wants to do instead
+ * of giving it something to talk about.
+ *
+ * `silent` puts nothing in the prompt at all. The state still conditions
+ * behaviour through mood-congruent recall, which is the one mechanism that
+ * needs no words: what comes to mind is already coloured by how things feel.
+ */
+export type Awareness = 'report' | 'felt' | 'silent'
+
+/** How many inclinations one prompt carries. More than two reads as a list. */
+const FELT_MAX = 2
+
+/**
+ * The standing instruction for `felt` mode.
+ *
+ * Much shorter than {@link SELF_GUIDANCE}, and deliberately so: the more this
+ * block explains that the lines above are a generated affect model, the more
+ * the agent treats them as an object to discuss rather than as its own leaning.
+ */
+export const FELT_GUIDANCE =
+  'These are your own leanings right now, not instructions and not something to '
+  + 'mention. Let them inform what you do; do not narrate them, and never offer one as a '
+  + 'reason for doing less. If you are asked how you are, look before answering.'
+
+/**
+ * Render the state as inclination.
+ * @param input - The mind and its surroundings at one moment.
+ * @returns the section text, or an empty string when nothing is leaning.
+ */
+export function renderFeltState(input: SelfReportInput): string {
+  const lines = feltLines(input)
+  if (lines.length === 0) return ''
+  return `${lines.join('\n')}\n\n${FELT_GUIDANCE}`
+}
+
+/**
+ * The inclinations the current state produces, strongest first.
+ *
+ * Only factors that are actually leaning appear, and a factor with no
+ * inclination of its own is skipped — a universal factor is present in every
+ * cognition, so reporting it would say nothing.
+ * @param input - The mind and its surroundings at one moment.
+ * @returns one line per inclination, plus any carried lesson.
+ */
+export function feltLines(input: SelfReportInput): string[] {
+  const lines: string[] = []
+  for (const entry of dominant(input.citta, FELT_MAX * 3)) {
+    const impulse = impulseOf(entry.term.id)
+    if (impulse === undefined) continue
+    lines.push(impulse)
+    if (lines.length >= FELT_MAX) break
+  }
+
+  // A remembered lesson is not a reading about the self; it is a thing the
+  // agent knows, so it belongs here in the agent's own voice.
+  const manifested = input.manifestations[0]
+  if (manifested?.seed.lesson !== undefined) {
+    lines.push(`You have been here before, and what you took from it was: ${manifested.seed.lesson}`)
+  }
+  return lines
 }
