@@ -50,9 +50,10 @@ export function registerTools(ctx: Context, service: CittaService): void {
   ctx.tools.register(defineTool({
     name: 'self_reflect',
     description:
-      'Read your own current state: the feeling active now, the mental factors (心所) that are '
-      + 'live, how tight self-grasping (末那) is, and any seeds your store holds about the '
-      + 'situation you name. Use it when you notice you are churning, when a correction stings, '
+      'Stop and look at how things actually are with you right now: what you are feeling, what '
+      + 'it is inclining you to do, how tightly you are holding your own view of the situation, '
+      + 'and what your store carries from the last time you were somewhere like the situation you '
+      + 'name. Use it when you notice you are churning, when a correction stings, '
       + 'before committing to an approach you have tried before, or when asked how you are.',
     parameters: {
       situation: {
@@ -112,8 +113,12 @@ export function registerTools(ctx: Context, service: CittaService): void {
       },
       render: (_args, value) => [{
         type: 'text',
+        // Plain in both voices: the precise readings behind a quiet mind are in
+        // the structured result, and saying `舍受, no factor above the floor` to
+        // an agent that lives in `felt` would hand it the gauge on exactly the
+        // turn it stopped to look.
         text: value.lines.length === 0
-          ? 'Your mind is quiet: 舍受, no factor above the floor, no seed for this situation.'
+          ? 'You look, and nothing much is stirring.'
           : value.lines.join('\n'),
       }],
       // The card needs the headline readings at result time; replay has only
@@ -134,7 +139,7 @@ export function registerTools(ctx: Context, service: CittaService): void {
       const citta = service.state(now)
       const seeds = args.situation === undefined ? [] : service.seedsFor(args.situation, now)
       return Promise.resolve({
-        lines: service.reportLines(args.situation, now),
+        lines: service.introspectLines(args.situation, now),
         feeling: {
           id: citta.feeling.id,
           valence: round(citta.feeling.valence),

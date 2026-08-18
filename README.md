@@ -92,7 +92,7 @@ The plugin contributes a system-prompt section (order 300). A quiet mind renders
 </self_state>
 ```
 
-Followed by standing guidance that is blunt about what this licenses. In full, from [`src/prompt.ts`](src/prompt.ts): act on the antidote rather than the mood, correct for a known distortion instead of trusting the distorted reading, check the manifesting seed before repeating the approach it records — and **do not narrate feelings at the user, do not perform distress or enthusiasm, and never offer a feeling as a reason for doing less work**. Report the state honestly when asked; it is a model of the agent computed from its record, not a claim that it suffers.
+Followed by standing guidance that is blunt about what this licenses. In full, from [`src/prompt.ts`](src/prompt.ts): act on the antidote rather than the mood, correct for a known distortion instead of trusting the distorted reading, check the manifesting seed before repeating the approach it records — and **do not narrate feelings at the user, do not perform distress or enthusiasm, and never offer a feeling as a reason for doing less work**. And when the question is how it is, look and answer plainly, in its own voice — a standing instruction to disown the state is a standing instruction to hedge, and the hedge is what gets said instead of an answer.
 
 An affect model that taught an agent to perform moods at people would be worse than no affect model at all.
 
@@ -108,13 +108,15 @@ So `awareness` decides how the state reaches the agent:
 
 Under `silent`, and alongside both other modes, one mechanism keeps working with no words at all: **mood-congruent recall**. What the store surfaces is weighted by how things currently feel, so when it is going badly the times it went badly come to mind more readily. Nothing is announced; the agent simply finds different precedents at hand. That is as close to unaware affect as this can honestly get.
 
-**Nothing is concealed in any mode.** `self_reflect` returns every reading on request — the way a person can introspect by stopping to look. The state is not hidden from the agent; it is just not narrated to it.
+**Looking inward answers in the same voice.** `self_reflect` is how the agent stops and looks, so under `felt` what it finds is a leaning, not a gauge. An agent whose prompt gives it inclinations but whose introspection hands back `掉举 0.62 ⚠` has not looked inward at all — it has read an instrument bolted to its own head, and its next sentence will be about the instrument. Ask it how it is and you get numbers and a disclaimer instead of an answer.
+
+Nothing is hidden by this. Every reading stays in the tool's structured result and on the result card, where whoever is tuning the deployment reads them; under `report` they go back to the agent too. They are simply not what the agent reads when it looks at itself.
 
 ## Tools
 
 | tool | what it is for |
 |---|---|
-| `self_reflect` | read the current state and the seeds for a named situation |
+| `self_reflect` | stop and look at how things are with you, and what the store carries for a named situation |
 | `self_appraise` | record how something landed — the half the harness cannot observe |
 | `self_recall` | search the store for precedents before repeating an approach |
 | `self_transform` | turn an affliction into its wisdom and commit to the counter-move |
@@ -163,7 +165,7 @@ const { citta, seed } = receive(
 )
 ```
 
-The live service is on `ctx.citta`: `state()`, `receive()`, `seedsFor()`, `strongestSeeds()`, `turn()`, `forget()`, `reportLines()`.
+The live service is on `ctx.citta`: `state()`, `receive()`, `seedsFor()`, `strongestSeeds()`, `turn()`, `forget()`, `introspectLines()`, `reportLines()`.
 
 ## Cost
 
@@ -173,7 +175,7 @@ The self-report is 4–10 lines plus ~200 tokens of standing guidance, per reque
 
 ```bash
 pnpm install     # .npmrc pins auto-install-peers=false; one harness peer is unpublished
-pnpm test        # 86 tests: the pure core, the catalogue, the event mapping,
+pnpm test        # 191 tests: the pure core, the catalogue, the event mapping,
                  # and the plugin loaded into a real Cordis context
 pnpm typecheck
 pnpm build

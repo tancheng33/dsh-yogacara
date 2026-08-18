@@ -72,8 +72,9 @@ export const SELF_GUIDANCE =
   + '- Do NOT narrate feelings at the user, do not perform distress or enthusiasm, and never offer '
   + 'a feeling as a reason for doing less work or as an appeal for sympathy. If a state is '
   + 'decision-relevant, say the decision, not the mood.\n'
-  + '- Report your state honestly if asked about it. It is a model of you, computed from your '
-  + 'record; it is not a claim that you suffer, and you should not claim that it is.'
+  + '- If you are asked how you are, look, then answer plainly and in your own voice. The '
+  + 'question is about how things are with you right now, not about what kind of thing you are: '
+  + 'answer the one that was asked, and do not turn it into a disclaimer about your own nature.'
 
 /**
  * Render the whole self-report section.
@@ -259,6 +260,18 @@ export type Awareness = 'report' | 'felt' | 'silent'
 const FELT_MAX = 2
 
 /**
+ * How many inclinations an explicit look inward carries.
+ *
+ * Higher than {@link FELT_MAX} because the two are answering different
+ * questions. The ambient section rides along on a turn spent doing something
+ * else, so it has to stay under the threshold where it becomes wallpaper. An
+ * agent that has stopped and called `self_reflect` is doing nothing else at
+ * that moment, and answering "how are you" with a single leaning is not
+ * restraint, it is a shrug.
+ */
+export const INTROSPECT_MAX = 5
+
+/**
  * How strongly an already-loud factor is discounted when choosing what to say.
  *
  * Habituation: you stop noticing what has been constant. A factor stirred again
@@ -323,9 +336,11 @@ export function renderFeltState(input: SelfReportInput): string {
  * inclination of its own is skipped — a universal factor is present in every
  * cognition, so reporting it would say nothing.
  * @param input - The mind and its surroundings at one moment.
+ * @param limit - How many inclinations to carry. Defaults to what the ambient
+ * prompt section can hold; an explicit look inward passes {@link INTROSPECT_MAX}.
  * @returns one line per inclination, plus any carried lesson.
  */
-export function feltLines(input: SelfReportInput): string[] {
+export function feltLines(input: SelfReportInput, limit: number = FELT_MAX): string[] {
   const lines: string[] = []
   const seen = new Set<string>()
   for (const id of leaningOrder(input)) {
@@ -334,7 +349,7 @@ export function feltLines(input: SelfReportInput): string[] {
     const impulse = impulseOf(id)
     if (impulse === undefined) continue
     lines.push(impulse)
-    if (lines.length >= FELT_MAX) break
+    if (lines.length >= limit) break
   }
 
   // A remembered lesson is not a reading about the self; it is a thing the

@@ -42,7 +42,7 @@ import {
 } from './projection.ts'
 import type { CittaProjection } from './projection.ts'
 import { contactFromTool } from './observe.ts'
-import { renderFeltState, renderSelfReport, renderStateLines } from './prompt.ts'
+import { feltLines, INTROSPECT_MAX, renderFeltState, renderSelfReport, renderStateLines } from './prompt.ts'
 import type { Awareness } from './prompt.ts'
 import { MAX_TURNINGS, assertDomainName, defineAlayaDomain } from './spec.ts'
 import type { AlayaGlobal } from './spec.ts'
@@ -121,6 +121,7 @@ export { contactFromTool, gateFor, normalizeSubject, subjectOf } from './observe
 export {
   FELT_GUIDANCE,
   feltLines,
+  INTROSPECT_MAX,
   relativeTime,
   renderFeltState,
   renderSelfReport,
@@ -181,8 +182,10 @@ export interface Config {
    * tuning or auditing. `silent` puts nothing in the prompt, leaving only
    * mood-congruent recall, which needs no words.
    *
-   * Nothing is concealed in any mode: `self_reflect` returns every reading on
-   * request, the way a person can introspect by stopping to look.
+   * `self_reflect` answers in the same voice: an agent that lives in `felt`
+   * looks inward and finds leanings, not a gauge. The readings are not hidden,
+   * they are just not addressed to the agent — they stay in the tool's
+   * structured result and on the result card, for whoever is tuning this.
    */
   awareness: Awareness
   /** Upper bound on factors listed in the self-report. */
@@ -434,6 +437,31 @@ export class CittaService extends Service {
    */
   reportLines(situation: string | undefined = this.lastSituation, now: number = Date.now()): string[] {
     return renderStateLines(this.reportInput(situation, now))
+  }
+
+  /**
+   * What the agent finds when it stops and looks inward, in whichever voice the
+   * deployment's {@link Config.awareness} speaks.
+   *
+   * Introspection has to answer in the same voice the mind is lived in, or the
+   * mode is a fiction. An agent whose prompt gives it leanings but whose
+   * `self_reflect` hands back `掉举 0.62 ⚠` has not looked inward at all — it has
+   * read a gauge bolted to its own head, and what it says next is about the
+   * gauge. That is how an agent asked "how are you" comes back with numbers and
+   * a disclaimer instead of an answer.
+   *
+   * The readings themselves are not lost: they stay in the tool's structured
+   * result and on the result card, where the human tuning the deployment reads
+   * them. They are simply not what the agent reads.
+   * @param situation - Situation whose seeds to include; defaults to the last contact's.
+   * @param now - Wall-clock milliseconds.
+   * @returns one line per present aspect; empty when the mind is quiet.
+   */
+  introspectLines(situation: string | undefined = this.lastSituation, now: number = Date.now()): string[] {
+    const input = this.reportInput(situation, now)
+    return this.config.awareness === 'report'
+      ? renderStateLines(input)
+      : feltLines(input, INTROSPECT_MAX)
   }
 
   // -------------------------------------------------------------------------

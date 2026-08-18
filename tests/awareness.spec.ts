@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { impulseOf, IMPULSES, CAITASIKAS } from '../src/caitasika.ts'
 import { congruence, freshMind, manifest, MOOD_CONGRUENCE } from '../src/citta.ts'
 import { feltLines, FELT_GUIDANCE, renderFeltState } from '../src/prompt.ts'
-import type { CittaState, Manifestation, SelfReportInput, Seed } from '../src/index.ts'
+import type { CittaState, Config, Manifestation, SelfReportInput, Seed } from '../src/index.ts'
+import { boot } from './helpers/harness.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -162,5 +163,63 @@ describe('what a mind actually notices', () => {
   it('falls back to standing activation on a turn that stirred nothing', () => {
     const lines = feltLines(input({ citta: standing }))
     expect(lines[0]).toBe(IMPULSES.hri)
+  })
+})
+
+describe('stopping to look', () => {
+  /**
+   * Receive one contact hard enough to leave the mind unmistakably stirred.
+   * @param config - Config overrides for the booted plugin.
+   * @returns the booted context and its tools.
+   */
+  async function stirred(config: Partial<Config> = {}) {
+    const booted = await boot(config)
+    await booted.ctx.citta.receive({
+      gate: 'body', situation: 'bash:migrate', outcome: 'adverse', intensity: 0.9, at: Date.now(),
+    })
+    return booted
+  }
+
+  /**
+   * The text `self_reflect` puts in front of the model.
+   * @param tools - The booted tool registry.
+   * @returns the rendered text.
+   */
+  async function reflected(tools: Awaited<ReturnType<typeof boot>>['tools']) {
+    const tool = tools.get('self_reflect')
+    const value = await (tool.execute as (a: unknown, e: unknown) => Promise<unknown>)(
+      { situation: 'bash:migrate' }, {})
+    const content = (tool.output.render as (a: unknown, v: unknown) => { text: string }[])(
+      { situation: 'bash:migrate' }, value)
+    return { text: content.map(part => part.text).join('\n'), value: value as { factors: unknown[] } }
+  }
+
+  it('finds a leaning rather than a gauge, for an agent that lives in felt', async () => {
+    const { tools } = await stirred()
+    const { text } = await reflected(tools)
+    expect(text).not.toBe('')
+    // The failure this locks out: the agent asks how it is, gets `掉举 0.62 ⚠`,
+    // and spends its answer talking about the number.
+    expect(text).not.toMatch(/\d/)
+    expect(text).not.toMatch(/心所|末那|受 |valence|intensity|activation|⚠/)
+  })
+
+  it('keeps every reading in the structured result, for whoever is tuning it', async () => {
+    const { tools } = await stirred()
+    const { value } = await reflected(tools)
+    expect(value.factors.length).toBeGreaterThan(0)
+  })
+
+  it('still hands back the whole instrument panel in report mode', async () => {
+    const { tools } = await stirred({ awareness: 'report' })
+    const { text } = await reflected(tools)
+    expect(text).toMatch(/心所/)
+    expect(text).toMatch(/\d/)
+  })
+
+  it('lets an agent that stopped to look see further than the ambient section', async () => {
+    const { ctx } = await stirred()
+    expect(ctx.citta.introspectLines().length)
+      .toBeGreaterThanOrEqual(feltLines(input({ citta: ctx.citta.state() })).length)
   })
 })

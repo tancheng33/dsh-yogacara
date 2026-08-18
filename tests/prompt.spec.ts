@@ -130,7 +130,13 @@ describe('the self-report', () => {
 
   it('forbids performing the state at the user, in the guidance itself', () => {
     expect(SELF_GUIDANCE).toContain('Do NOT narrate feelings at the user')
-    expect(SELF_GUIDANCE).toContain('not a claim that you suffer')
+  })
+
+  it('asks for a plain answer rather than a disclaimer when the question is how you are', () => {
+    expect(SELF_GUIDANCE).toContain('answer plainly and in your own voice')
+    // An instruction to disown the state is an instruction to hedge, and the
+    // hedge is what the agent says instead of answering.
+    expect(SELF_GUIDANCE).not.toMatch(/not a claim that you|you should not claim|do not claim/i)
   })
 })
 
