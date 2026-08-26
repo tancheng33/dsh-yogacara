@@ -36,9 +36,11 @@ import type { CittaChangeMeta } from './events.ts'
 import {
   CITTA_PROJECTION_KEY,
   CITTA_PROJECTION_VERSION,
+  CITTA_PROJECTION_VERSION_LIVE,
   cittaProjectionSchema,
   EMPTY_PROJECTION,
-  foldCittaChange,
+  liveCittaProjection,
+  PROJECTION_HISTORY,
 } from './projection.ts'
 import type { CittaProjection } from './projection.ts'
 import { contactFromTool } from './observe.ts'
@@ -109,6 +111,7 @@ export { CHECKPOINT_FACTORS } from './events.ts'
 export {
   CITTA_PROJECTION_KEY,
   CITTA_PROJECTION_VERSION,
+  CITTA_PROJECTION_VERSION_LIVE,
   cittaChangeSchema,
   cittaProjectionSchema,
   EMPTY_PROJECTION,
@@ -196,6 +199,29 @@ export interface Config {
   halfLifeMs: number
   /** Milliseconds for one seed's potency to halve. */
   seedHalfLifeMs: number
+  /**
+   * Persist each mind-state checkpoint onto the owning session's durable log
+   * as a `citta/change` event, in addition to the live store.
+   *
+   * **Default `true` (intent), but the append is currently skipped at runtime —
+   * see below.** The harness persistence reader refuses any session whose log
+   * carries an event type outside the runtime catalog
+   * (`KNOWN_SESSION_EVENT_TYPES`) that is not marked `ignorable`. Out-of-repo
+   * plugin events are outside that catalog by construction, and the
+   * `Session.append()` available to plugins (rc.6 through current master)
+   * exposes no `ignorable` flag and no registration channel — so writing
+   * `citta/change` here would produce sessions that **fail to reload** under
+   * this same runtime, and under any later runtime that drops the plugin.
+   *
+   * Until the harness ships a sanctioned `ignorable` write API or event
+   * registration surface, `receive()` detects this and skips the durable
+   * append, emitting a one-time warning instead of poisoning the log. Set
+   * this to `false` to silence that warning and signal the choice explicitly.
+   *
+   * The durable truth needs no session-log copy: seeds, the momentary state,
+   * and turnings all live in the alaya storage domain and survive restart.
+   */
+  persistTrajectory: boolean
   /** Upper bound on stored seeds; the weakest are forgotten past it. */
   maxSeeds: number
   /**
@@ -243,6 +269,7 @@ export class CittaService extends Service {
     manasWarning: s.number().min(0).max(1).default(0.5),
     halfLifeMs: s.number().step(1).min(1000).default(DEFAULT_TUNING.halfLifeMs),
     seedHalfLifeMs: s.number().step(1).min(60_000).default(DEFAULT_TUNING.seedHalfLifeMs),
+    persistTrajectory: s.boolean().default(true),
     maxSeeds: s.number().step(1).min(1).default(2000),
     flushIntervalMs: s.number().step(1).min(0).default(15_000),
   })
@@ -253,6 +280,12 @@ export class CittaService extends Service {
   private readonly seeds = new Map<string, Seed>()
   private citta: CittaState
   private turnings: Transformation[] = []
+  /**
+   * In-memory tail of the latest mind-state checkpoints, newest last. This is
+   * the panel's data source. It is intentionally NOT baked from the session
+   * log: see {@link Config.persistTrajectory}.
+   */
+  private recentCheckpoints: CittaChangeMeta[] = []
   private table?: KvTable<string, Seed>
   private global?: DomainGlobal<AlayaGlobal>
   /** The situation the last contact named, used to manifest seeds in the prompt. */
@@ -326,15 +359,25 @@ export class CittaService extends Service {
 
     // The projection is what the browser panel reads. It activates only where
     // a projection registry is composed, so a headless deployment is untouched.
+    //
+    // The panel's data comes straight from this service's live store, not from
+    // any `citta/change` events folded out of the session log. Writing those
+    // events is what breaks session reload (see {@link Config.persistTrajectory}),
+    // so the projection renders the current mind state instead: live sessions
+    // show the actual mood, and replayed sessions render an honest "no data"
+    // rather than crashing the reader.
     this.ctx.inject(['sessionProjections'], projectionCtx => {
       projectionCtx.sessionProjections.register<'citta', CittaProjection>({
         key: CITTA_PROJECTION_KEY,
         schema: cittaProjectionSchema,
         init: () => EMPTY_PROJECTION,
-        apply: (state, event) =>
-          event.type === 'citta/change' ? foldCittaChange(state, event.data) : state,
-        view: state => state,
-        stateVersion: CITTA_PROJECTION_VERSION,
+        // No log event carries the mind anymore; nothing folds. The view reads
+        // the service directly, so `state` is only a placeholder.
+        apply: state => state,
+        view: () => liveCittaProjection(this.recentCheckpoints),
+        // Bumped: the projection is no longer derived from the durable log, so
+        // any cached fold from an older build must be discarded.
+        stateVersion: CITTA_PROJECTION_VERSION_LIVE,
       })
     })
 
@@ -396,6 +439,15 @@ export class CittaService extends Service {
   /** How many seeds the store holds. */
   get seedCount(): number {
     return this.seeds.size
+  }
+
+  /**
+   * The in-memory tail of recent mind-state checkpoints (oldest first, at most
+   * {@link PROJECTION_HISTORY}). This is the panel's data source; it is never
+   * written to the durable session log.
+   */
+  get recentTrajectory(): readonly CittaChangeMeta[] {
+    return this.recentCheckpoints
   }
 
   /**
@@ -470,11 +522,17 @@ export class CittaService extends Service {
 
   /**
    * Receive one contact: move the mind, perfume the situation's seed, persist
-   * both, and record the resulting state on the session that caused it.
+   * both, and keep a whole-value checkpoint of the resulting state in memory
+   * for the panel to read.
+   *
+   * The {@link session} argument records which conversation produced the
+   * contact. Its only remaining effect is documented under
+   * {@link Config.persistTrajectory}: when that flag is deliberately enabled,
+   * the checkpoint is also appended to the session's durable log as a
+   * `citta/change` event. It defaults off because doing so breaks session
+   * reload — the plugin owns no sanctioned channel into that log.
    * @param contact - The contact to receive.
-   * @param session - The session to append the durable checkpoint to. Omitted
-   * for a contact with no owning conversation, which then moves the mind and
-   * the store but leaves no trace in any log.
+   * @param session - The owning conversation, when one exists.
    * @returns what the contact produced.
    */
   async receive(contact: Contact, session?: Session): Promise<Reception> {
@@ -496,15 +554,31 @@ export class CittaService extends Service {
       })
     }
     this.scheduleFlush()
-    if (session !== undefined) {
-      // Appending must never break the contact that produced it.
-      try {
-        session.append('citta/change', checkpointOf(contact, reception, this.seeds.size))
-      } catch (error: unknown) {
-        this.ctx.logger?.warn?.('yogacara: could not record citta/change: %o', error)
-      }
-    }
+
+    const checkpoint = checkpointOf(contact, reception, this.seeds.size)
+    this.recentCheckpoints = [...this.recentCheckpoints, checkpoint].slice(-PROJECTION_HISTORY)
+    // Durable session-log append is intentionally NOT performed. The plugin
+    // owns no sanctioned event channel into that log: the persistence reader
+    // rejects any unrecognized, non-ignorable event type (the reload
+    // failure), and `Session.append()` gives plugins no way to set `ignorable`
+    // on current supported runtimes (rc.6 through current master). Until such
+    // an API exists, record nothing here — the checkpoint is already in
+    // `recentCheckpoints` for the live panel and in the alaya store for
+    // restart. See {@link Config.persistTrajectory}.
+    if (session !== undefined && this.config.persistTrajectory) this.warnTrajectoryUnsupported()
     return reception
+  }
+
+  /** Whether the skipped-append notice has already been logged this boot. */
+  private trajectoryWarned = false
+
+  /** Warn once that the requested durable trajectory is being skipped. */
+  private warnTrajectoryUnsupported(): void {
+    if (this.trajectoryWarned) return
+    this.trajectoryWarned = true
+    this.ctx.logger?.warn?.(
+      'yogacara: persistTrajectory is on, but this harness exposes no way to append an ignorable out-of-repo event; skipping citta/change session-log writes (sessions stay reloadable). Set persistTrajectory: false to silence this.',
+    )
   }
 
   /**
