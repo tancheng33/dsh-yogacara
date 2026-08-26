@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The bundle broke every profile that already had a storage stack** ([#1](https://github.com/tancheng33/dsh-yogacara/issues/1)). Listing `dsh-yogacara` in a `web` profile's bundles crashed at boot with `duplicate loader entry id: storage`, because this bundle's patch inserted `storage`, `storage-json`, and `storage-domain` — the same three ids `@deepseek-ai/dsh-web-app` inserts. The comment above those rows claimed a later layer would win per id; that is true for id-targeted config overrides but not for inserts, which are appended unconditionally, and the loader rejects a list with a repeated id. The rows are gone: the bundle now inserts exactly one row, its own. A profile stacking `dsh-web-app` needs nothing; a `dsh-base`-only profile adds the three rows to its own patch, and both READMEs now say so with the YAML to paste. Thanks to the reporter for the diagnosis, which was correct down to the loader call site.
+
 ## 0.2.0
 
 ### Added
