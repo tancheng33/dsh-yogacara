@@ -211,7 +211,7 @@ pnpm simulate    # replay a conversation through the core and watch it feel
 
 The catalogue is checked structurally: exactly 51 factors, each classical group at its classical size, every affliction carrying an antidote that is itself something a mind can cultivate. The plugin test boots `CittaService` in a real Cordis context over in-memory stand-ins for the harness services, so tool registration, the prompt section, automatic observation, persistence, and teardown are exercised rather than assumed.
 
-The harness packages are consumed from the `next` npm tag (`0.1.0-rc.6`); the `latest` tag points at an older line that cannot be installed.
+The harness packages are consumed from the `next` npm tag; the `latest` tag points at an older line that cannot be installed. `next` moves with each harness release, so the version this plugin is actually developed and tested against is whatever `devDependencies` pins — read it there rather than from this sentence. The `peerDependencies` ranges are open-ended above that floor, and deployments already run newer harness releases than the pinned one.
 
 ## Known limitations
 

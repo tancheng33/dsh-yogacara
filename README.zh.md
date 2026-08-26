@@ -209,7 +209,7 @@ pnpm simulate    # 把一段对话喂进去，看它怎么感觉
 
 心所表是结构化校验的：恰好 51 个，每一组是它经典的数目，每个烦恼都带着一个"可修"的对治（善心所或别境心所）。插件测试会在真实 Cordis Context 里用内存替身启动 `CittaService`，所以工具注册、提示词 section、自动观测、持久化与拆卸都是跑出来的，不是假设出来的。
 
-harness 依赖走 npm 的 `next` 标签（`0.1.0-rc.6`）；`latest` 指向的旧线装不上。
+harness 依赖走 npm 的 `next` 标签；`latest` 指向的旧线装不上。`next` 每次 harness 发版都会前移，所以本插件实际开发和测试针对的版本以 `devDependencies` 里钉的为准，不要从这句话里读——`peerDependencies` 在那个下限之上是开区间，实际部署跑的 harness 往往比钉的那个更新。
 
 ## 已知局限
 
