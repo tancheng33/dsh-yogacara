@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Both READMEs stated which version the `next` npm tag pointed at. `next` moves every harness release, so the number was stale within days — the reporter of [#1](https://github.com/tancheng33/dsh-yogacara/issues/1) was already two releases past it. The prose now points at `devDependencies`, which stays true because the installer reads it ([#3](https://github.com/tancheng33/dsh-yogacara/issues/3)).
+
 ## 0.2.1
 
 ### Fixed
