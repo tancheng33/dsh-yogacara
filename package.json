@@ -1,6 +1,6 @@
 {
   "name": "dsh-yogacara",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A Yogācāra (唯识) self-model plugin for DeepSeek Harness — eight consciousnesses, the 51 mental factors, a perfumed seed store, and a measurable self-grasping meter, rendered back to the agent as first-person state.",
   "keywords": [
     "dsh",
