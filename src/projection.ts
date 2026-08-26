@@ -1,15 +1,14 @@
 /**
  * The session projection the panel reads.
  *
- * A projection is a deterministic fold of the durable log, so the browser can
- * render the mind without calling the host and without holding the whole
- * conversation in memory — and so a replayed session shows the state it
- * actually had, not the state the process happens to be in now.
- *
- * The fold keeps the latest checkpoint plus a bounded tail. The tail is what
- * makes a panel worth opening: one reading tells you the agent is at 掉举 0.6,
- * a trend tells you it has been climbing for twenty minutes, which is the part
- * a person can act on.
+ * The panel renders the agent's current mind state plus a bounded recent tail.
+ * The data is served live from the running `CittaService` — NOT folded out of
+ * the durable session log. It used to be a log fold (`apply` over
+ * `citta/change` events), but persisting that event is exactly what broke
+ * session reload for any runtime without this plugin's type registered, and
+ * current harness `Session.append()` gives plugins no `ignorable` channel.
+ * The fold helpers below are kept for compatibility and tests; the live
+ * registration reads from the service instead.
  * @module dsh-yogacara/projection
  */
 
@@ -68,8 +67,9 @@ export const EMPTY_PROJECTION: CittaProjection = { current: null, recent: [] }
 /**
  * Fold one checkpoint into the projection.
  *
- * Pure and deterministic over ascending log order, which is what makes the
- * cached state safe to reuse and the replay identical to the live run.
+ * Pure and deterministic over ascending event order. Retained for
+ * compatibility and for the legible whole-event contract; the live
+ * registration no longer drives it from the durable log.
  * @param state - The state so far.
  * @param change - The checkpoint to fold in.
  * @returns the next state.
@@ -87,14 +87,36 @@ export function foldCittaChange(
   }
 }
 
+/**
+ * Project a live checkpoint tail into the panel shape.
+ *
+ * This is the registration's live data source: instead of replaying the
+ * durable log, the service hands its in-memory tail directly, so the panel
+ * reflects the actual current mind without any session-log write.
+ * @param recent - Checkpoints, oldest first, at most {@link PROJECTION_HISTORY}.
+ * @returns the projection payload the panel renders.
+ */
+export function liveCittaProjection(recent: readonly CittaChangeMeta[]): CittaProjection {
+  return { current: recent.at(-1) ?? null, recent }
+}
+
 /** The projection key, declared once here and merged into the registry's map. */
 export const CITTA_PROJECTION_KEY = 'citta'
 
 /**
- * State-shape version. Bump when {@link CittaProjection} changes shape, so a
- * cached fold from an older build is discarded rather than misread.
+ * State-shape version for the legacy log-fold projection. Kept for reference;
+ * superseded by {@link CITTA_PROJECTION_VERSION_LIVE} for the registration.
  */
 export const CITTA_PROJECTION_VERSION = 1
+
+/**
+ * State-shape version in effect for the registration.
+ *
+ * Bumped to `2` because the projection is no longer derived by folding the
+ * durable session log (which is what broke reload); any cached fold from a
+ * version-1 build must be discarded rather than misread as current.
+ */
+export const CITTA_PROJECTION_VERSION_LIVE = 2
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {

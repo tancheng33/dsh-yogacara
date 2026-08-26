@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import CittaService, { assertDomainName, defineAlayaDomain } from '../src/index.ts'
+import CittaService, { assertDomainName, defineAlayaDomain, PROJECTION_HISTORY } from '../src/index.ts'
 import type { Config } from '../src/index.ts'
 import type { Seed } from '../src/types.ts'
 import { boot, emit, FakeFacility, FakeSession } from './helpers/harness.ts'
@@ -382,70 +382,82 @@ describe('feeling that comes from the conversation', () => {
   })
 })
 
-describe('the durable record of the mind moving', () => {
+describe('the in-memory record of the mind moving', () => {
   const session = new FakeSession('session-record')
 
   /** Let the fire-and-forget listener settle. */
   const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 10))
 
-  it('appends one whole-value checkpoint per contact', async () => {
+  /**
+   * Regression guard for the session-reload failure: the plugin must never
+   * write its own event type onto the durable session log. The persistence
+   * reader rejects any unrecognized, non-ignorable event, and the append the
+   * plugin can call has no ignorable channel — so no `citta/change` (or any
+   * other) event may be appended, on any code path, at any config.
+   */
+  it('never appends to the session log, on any contact path', async () => {
     const { ctx } = await boot()
     session.appended.length = 0
+
+    // Path 1: a chat-derived contact (observeChat on by default).
     emit(ctx, 'session/event', session, {
       type: 'user/message',
       data: { source: { kind: 'user' }, content: [{ type: 'text', text: '太好了，谢谢' }] },
     })
     await settle()
 
-    expect(session.appended).toHaveLength(1)
-    const [record] = session.appended
-    expect(record!.type).toBe('citta/change')
-    const data = record!.data as Record<string, unknown>
-    expect(data.kind).toBe('citta/change')
-    expect(data.situation).toBe('chat:warmth')
-    expect(data.gate).toBe('ear')
-    expect(data.outcome).toBe('favorable')
+    // Path 2: a direct receive() call with an owning session.
+    await ctx.citta.receive({
+      gate: 'ear', situation: 'chat:reply', outcome: 'adverse', intensity: 0.37, at: Date.now(),
+    }, session as never)
+
+    // Path 3: a direct receive() call with no owning session.
+    await ctx.citta.receive({
+      gate: 'eye', situation: 'read:a.ts', outcome: 'favorable', intensity: 0.4, at: Date.now(),
+    })
+
+    expect(session.appended).toHaveLength(0)
   })
 
-  it('carries enough on its own to render without any earlier event', async () => {
-    const { ctx } = await boot()
+  it('still skips the log when persistTrajectory is left at its default', async () => {
+    const { ctx } = await boot({ persistTrajectory: true })
     session.appended.length = 0
+    await ctx.citta.receive({
+      gate: 'ear', situation: 'chat:reply', outcome: 'adverse', intensity: 0.5, at: Date.now(),
+    }, session as never)
+    expect(session.appended).toHaveLength(0)
+  })
+
+  it('keeps whole-value checkpoints in memory instead, rendering on their own', async () => {
+    const { ctx } = await boot()
     emit(ctx, 'session/event', session, {
       type: 'user/message',
       data: { source: { kind: 'user' }, content: [{ type: 'text', text: '不对，不是这个' }] },
     })
     await settle()
 
-    const data = session.appended.at(-1)!.data as {
-      feeling: { id: string, valence: number }
-      factors: { id: string, activation: number }[]
-      manas: Record<string, number>
-      surprise: number
-      expected: { valence: number, confidence: number }
-      seedCount: number
-    }
-    expect(data.feeling.id).toBe('daurmanasya')
-    expect(data.feeling.valence).toBeLessThan(0)
-    expect(data.factors.length).toBeGreaterThan(0)
-    expect(Object.keys(data.manas).sort())
+    const latest = ctx.citta.recentTrajectory.at(-1)!
+    expect(latest.kind).toBe('citta/change')
+    expect(latest.situation).toBe('chat:rebuke')
+    expect(latest.gate).toBe('ear')
+    expect(latest.outcome).toBe('adverse')
+    expect(latest.feeling.id).toBe('daurmanasya')
+    expect(latest.feeling.valence).toBeLessThan(0)
+    expect(latest.factors.length).toBeGreaterThan(0)
+    expect(Object.keys(latest.manas).sort())
       .toEqual(['atmaDrsti', 'atmaMana', 'atmaMoha', 'atmaSneha'])
-    expect(data.surprise).toBe(1)
-    expect(data.expected).toEqual({ valence: 0, confidence: 0 })
-    expect(data.seedCount).toBe(1)
+    expect(latest.surprise).toBe(1)
+    expect(latest.expected).toEqual({ valence: 0, confidence: 0 })
+    expect(latest.seedCount).toBe(1)
   })
 
   it('rounds every reading, claiming no more precision than it has', async () => {
     const { ctx } = await boot()
-    session.appended.length = 0
     await ctx.citta.receive({
       gate: 'ear', situation: 'chat:reply', outcome: 'adverse', intensity: 0.37, at: Date.now(),
     }, session as never)
 
-    const data = session.appended.at(-1)!.data as {
-      feeling: { valence: number, arousal: number }
-      surprise: number
-      manas: Record<string, number>
-    }
+    const data = ctx.citta.recentTrajectory.at(-1)!
     const twoPlaces = (value: number): boolean => value === Math.round(value * 100) / 100
     expect(twoPlaces(data.feeling.valence)).toBe(true)
     expect(twoPlaces(data.feeling.arousal)).toBe(true)
@@ -453,14 +465,26 @@ describe('the durable record of the mind moving', () => {
     for (const reading of Object.values(data.manas)) expect(twoPlaces(reading)).toBe(true)
   })
 
-  it('leaves no trace for a contact with no owning conversation', async () => {
+  it('still records a checkpoint for a contact with no owning conversation', async () => {
     const { ctx } = await boot()
-    session.appended.length = 0
+    const before = ctx.citta.recentTrajectory.length
     await ctx.citta.receive({
       gate: 'eye', situation: 'read:a.ts', outcome: 'favorable', intensity: 0.4, at: Date.now(),
     })
-    expect(session.appended).toHaveLength(0)
+    expect(ctx.citta.recentTrajectory.length).toBe(before + 1)
     expect(ctx.citta.state().contacts).toBe(1)
+  })
+
+  it('bounds the in-memory tail to the trend window', async () => {
+    const { ctx } = await boot()
+    const total = PROJECTION_HISTORY + 5
+    for (let i = 0; i < total; i++) {
+      await ctx.citta.receive({
+        gate: 'ear', situation: 'chat:reply', outcome: i % 2 === 0 ? 'favorable' : 'adverse',
+        intensity: 0.3, at: Date.now() + i,
+      })
+    }
+    expect(ctx.citta.recentTrajectory.length).toBe(PROJECTION_HISTORY)
   })
 })
 
@@ -507,25 +531,40 @@ describe('the projection the browser panel reads', () => {
     expect(ctx.citta).toBeInstanceOf(CittaService)
   })
 
-  it('folds a citta/change event and ignores everything else', async () => {
+  it('no longer folds events; its placeholder state never changes', async () => {
+    // The panel data comes from the live service, not the log, so `apply` is a
+    // pass-through that keeps the cached state reference stable (zero
+    // downstream work) regardless of what events flow.
     const { projections } = await bootWithProjections()
     const definition = projections.registered[0]!
     const start = definition.init()
-    const unrelated = definition.apply(start, { type: 'turn/start', data: { turn: 1 } })
-    expect(unrelated).toBe(start)
+    expect(start).toEqual({ current: null, recent: [] })
 
-    const folded = definition.apply(start, {
-      type: 'citta/change',
-      data: {
-        kind: 'citta/change', version: 1, situation: 'chat:rebuke', gate: 'ear',
-        outcome: 'adverse', surprise: 1, expected: { valence: 0, confidence: 0 },
-        feeling: { id: 'daurmanasya', valence: -0.52, arousal: 0.65 },
-        factors: [{ id: 'hri', activation: 0.5 }],
-        manas: { atmaMoha: 0, atmaDrsti: 0, atmaMana: 0, atmaSneha: 0 },
-        seedCount: 1, at: Date.now(),
-      },
-    }) as { current: { situation: string } | null }
-    expect(folded.current?.situation).toBe('chat:rebuke')
-    expect(definition.schema.safeParse(definition.view(folded)).success).toBe(true)
+    const afterBoundary = definition.apply(start, { type: 'turn/start', data: { turn: 1 } })
+    expect(afterBoundary).toBe(start)
+    const afterCitta = definition.apply(start, { type: 'citta/change', data: {} })
+    expect(afterCitta).toBe(start)
+  })
+
+  it('view serves the live mind state from the service, not the log', async () => {
+    const { ctx, projections } = await bootWithProjections()
+    const definition = projections.registered[0]!
+    const start = definition.init()
+
+    // Before any contact the panel shows an empty mind.
+    const empty = definition.view(start) as { current: null, recent: unknown[] }
+    expect(empty.current).toBeNull()
+    expect(empty.recent).toHaveLength(0)
+    expect(definition.schema.safeParse(empty).success).toBe(true)
+
+    // A contact moves the in-memory trajectory; the view reflects it without
+    // any session-log event having been written.
+    await ctx.citta.receive({
+      gate: 'ear', situation: 'chat:rebuke', outcome: 'adverse', intensity: 0.7, at: Date.now(),
+    })
+    const live = definition.view(start) as { current: { situation: string } | null, recent: unknown[] }
+    expect(live.current?.situation).toBe('chat:rebuke')
+    expect(live.recent).toHaveLength(1)
+    expect(definition.schema.safeParse(live).success).toBe(true)
   })
 })
