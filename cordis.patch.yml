@@ -1,27 +1,19 @@
 # The configuration layer this bundle contributes when a profile lists it.
 # Users override any key here from their own profile `cordis.patch.yml`.
-
-# The store consciousness is durable, so it needs the storage stack. `dsh-base`
-# does not ship one — `dsh-web-app` is what normally inserts these three rows —
-# so this bundle inserts them itself, under the SAME ids that bundle uses. Later
-# layers win per id, so a profile that already has the stack ends up with these
-# equivalent values instead of a second, competing backend. Change the medium by
-# overriding `storage-json` (or replacing it with `dsh-storage-sqlite`) in your
-# own profile patch.
+#
+# This layer inserts exactly one row. It deliberately does NOT insert the
+# storage stack the store consciousness needs, even though it cannot work
+# without one: `insert` appends rows unconditionally, and the loader rejects
+# two rows sharing an id, so a bundle that inserts `storage` breaks every
+# profile whose other bundles already have it — `dsh-web-app` among them,
+# which is the common case. Renaming the rows does not help: a second backend
+# under a different id competes to provide the same service.
+#
+# So the stack is the profile's to own. A profile stacking `dsh-web-app`
+# already has it and needs nothing. A `dsh-base`-only profile has none, and
+# 阿赖耶识 is durable, so it needs three rows in its own patch — see "Install"
+# in the README for the YAML to paste.
 - insert:
-    - id: storage
-      name: '@deepseek-ai/dsh-storage'
-
-    - id: storage-json
-      name: '@deepseek-ai/dsh-storage-json'
-      config:
-        root: !!js dshHomePath('storages')
-
-    - id: storage-domain
-      name: '@deepseek-ai/dsh-storage-domain'
-      config:
-        backend: json
-
     - id: yogacara
       name: dsh-yogacara
       config:
@@ -29,6 +21,10 @@
         # One name is one store; run two rows with different names to give two
         # agents genuinely separate histories.
         domain: alaya
+        # Derive contacts from the conversation itself: being interrupted,
+        # answered in one syllable after a long reply, asked the same thing
+        # again, thanked. This is where a chat agent's feeling comes from.
+        observeChat: true
         # Derive contacts automatically from tool results. With this off the
         # mind moves only when the model calls `self_appraise` — honest, but
         # sparse, and the seed store stays nearly empty.
@@ -37,7 +33,12 @@
         # what makes the state something the agent can act on rather than
         # something only a dashboard can read.
         promptSection: true
-        # Upper bound on mental factors listed in that report.
+        # How that state reaches the agent:
+        #   felt   — a first-person leaning, no numbers, no factor names
+        #   report — the full instrument panel, for tuning and auditing
+        #   silent — nothing in the prompt; mood-congruent recall still works
+        awareness: felt
+        # Upper bound on mental factors listed under `report`.
         promptMaxFactors: 5
         # Self-grasping (末那) at or above this renders as a warning with its
         # measurement proxy and its counter-move, not just a number.

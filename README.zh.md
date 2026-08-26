@@ -129,7 +129,7 @@ pnpm add dsh-yogacara
 
 npm 包自带预构建的 `lib/`，安装时不需要构建授权（`allowBuilds`）。想跟着 `main` 走则用：`pnpm add github:tancheng33/dsh-yogacara`。
 
-然后在 profile 的 `cordis.patch.yml` 里列出它。bundle 自带 [`cordis.patch.yml`](cordis.patch.yml) 中的默认值——其中包含 storage 三行，因为藏识要持久化而 `dsh-base` 本身不带存储栈；它们用的是 `dsh-web-app` 的同名 row id，所以本来就有存储的 profile 保持自己的配置。profile 可覆盖任意键：
+把它加进 profile 的 `dsh.profile.bundles` 就够了：bundle 自带 [`cordis.patch.yml`](cordis.patch.yml) 里的默认值，profile 自己的 patch 可覆盖任意键：
 
 ```yaml
 - insert:
@@ -137,8 +137,10 @@ npm 包自带预构建的 `lib/`，安装时不需要构建授权（`allowBuilds
       name: dsh-yogacara
       config:
         domain: alaya
+        observeChat: true
         observeTools: true
         promptSection: true
+        awareness: felt            # felt | report | silent
         promptMaxFactors: 5
         manasWarning: 0.5
         halfLifeMs: 300000         # 刹那：心所五分钟减半
@@ -147,7 +149,30 @@ npm 包自带预构建的 `lib/`，安装时不需要构建授权（`allowBuilds
         flushIntervalMs: 15000
 ```
 
-它 inject `storageDomain`，并按需使用 `systemPrompt` 与 `tools`：没有提示词注册表时状态照样累积、照样能从 `ctx.citta` 查询，只是不呈现给模型。
+### 存储栈归 profile 所有
+
+藏识要持久化，所以本插件 inject `storageDomain`，没有它就不会启动。但它**故意不自己插入** storage 三行：bundle 的 `insert` 是无条件追加，而 loader 拒绝同 id 的两行，所以一个插入 `storage` 的 bundle 会让所有本来就有存储栈的 profile 起不来。
+
+- **叠了 `@deepseek-ai/dsh-web-app` 的 profile**（默认的 `web`，以及绝大多数真实部署）已经有这三行，什么都不用做。
+- **只有 `dsh-base` 的 profile** 没有，需要往自己的 `cordis.patch.yml` 里补：
+
+```yaml
+- insert:
+    - id: storage
+      name: '@deepseek-ai/dsh-storage'
+    - id: storage-json
+      name: '@deepseek-ai/dsh-storage-json'
+      config:
+        root: !!js dshHomePath('storages')
+    - id: storage-domain
+      name: '@deepseek-ai/dsh-storage-domain'
+      config:
+        backend: json
+```
+
+没有 storage domain 时服务是**静默不启动**——不崩，但也没有状态、没有工具。`dsh --profile <名字> --dump-config` 可以确认这三行在不在，每个 id 必须只出现一次。
+
+`systemPrompt` 与 `tools` 是按需使用的：没有提示词注册表时状态照样累积、照样能从 `ctx.citta` 查询，只是不呈现给模型。
 
 ## 作为库使用
 
